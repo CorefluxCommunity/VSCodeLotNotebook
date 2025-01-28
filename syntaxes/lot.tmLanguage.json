@@ -1,0 +1,42 @@
+{
+    "scopeName": "source.lot",
+    "name": "LOT",
+    "patterns": [
+      { "include": "#comments" },
+      { "include": "#keywords" },
+      { "include": "#strings" }
+    ],
+    "repository": {
+      "comments": {
+        "patterns": [
+          {
+            "name": "comment.line.double-slash.lot",
+            "match": "//.*$"
+          },
+          {
+            "name": "comment.block.lot",
+            "begin": "/\\*",
+            "end": "\\*/"
+          }
+        ]
+      },
+      "keywords": {
+        "patterns": [
+          {
+            "name": "keyword.control.lot",
+            "match": "\\b(DEFINE|MODEL|RULE|ACTION|PUBLISH|GET|ON|EVERY|DO|IF|THEN|ELSE)\\b"
+          }
+        ]
+      },
+      "strings": {
+        "patterns": [
+          {
+            "name": "string.quoted.double.lot",
+            "begin": "\"",
+            "end": "\""
+          }
+        ]
+      }
+    }
+  }
+  

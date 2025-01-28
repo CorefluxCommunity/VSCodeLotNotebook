@@ -1,0 +1,126 @@
+{
+	"name": "vscode-lot-notebooks",
+	"displayName": "LOT Notebooks",
+	"description": "Coreflux VS Code Notebooks for LOT language, leveraging making data-driven systems",
+	"version": "0.1.5",
+	"publisher": "Coreflux",
+	"engines": {
+	  "vscode": "^1.7.0"
+	},
+	"icon": "images/logo.png",
+	"categories": [
+	  "Notebooks"
+	],
+	"activationEvents": [
+	  "onNotebook:lot-notebook",
+	  "onLanguage:lot",
+	  "onCommand:lot-notebook.create",
+	  "onCommand:lot-notebook.changeCredentials",
+	  "onCommand:lot.openTopicPayload"
+	],
+	"main": "./dist/extension.js",
+	"contributes": {
+		"menus": {
+			"notebook/cell/title": [
+			  {
+				"command": "lot.openChatbot",
+				"when": "resourceLangId == lot",
+				"group": "inline"
+			  }
+			]
+		},
+		"views": {
+			"explorer": [
+			  {
+				"id": "lotLiveTree",
+				"name": "LOT Live Tree"
+			  }
+			]
+		  },
+	  "commands": [
+		{
+		  "command": "lot-notebook.create",
+		  "title": "New LOT Notebook",
+		  "category": "LOT Notebook"
+		},
+		{
+			"command": "lot.openChatbot",
+			"title": "Open Chatbot",
+			"category": "LOT Chatbot"
+		},
+		{
+		  "command": "lot-notebook.changeCredentials",
+		  "title": "Change MQTT Credentials"
+		},
+		{
+		  "command": "lot.openTopicPayload",
+		  "title": "Open Topic Payload"
+		}
+	  ],
+	  "notebooks": [
+		{
+		  "id": "lot-notebook",
+		  "type": "lot-notebook",
+		  "displayName": "LOT Notebook",
+		  "selector": [
+			{
+			  "filenamePattern": "*.lotnb"
+			}
+		  ]
+		}
+	  ],
+	  "notebookRenderer": [
+		{
+		  "id": "lotTreeRenderer",
+		  "displayName": "LOT Tree Renderer",
+		  "entrypoint": "./dist/renderer/treeRenderer.js",
+		  "mimeTypes": [
+			"application/lot-tree+json"
+		  ]
+		}
+	  ],
+	  "iconThemes": [
+		{
+		  "id": "lot-icon-theme",
+		  "label": "LOT Icon Theme",
+		  "path": "./lot-icon-theme.json"
+		}
+	  ],
+	  "languages": [
+		{
+		  "id": "lot",
+		  "aliases": ["LOT", "lot"],
+		  "extensions": [".lot", ".cf"],
+		  "configuration": "./language-configuration.json"
+		}
+	  ],
+	  "grammars": [
+		{
+		  "language": "lot",
+		  "scopeName": "source.lot",
+		  "path": "./syntaxes/lot.tmLanguage.json"
+		}
+	  ]
+	},
+	"scripts": {
+		"compile:extension": "tsc --project tsconfig.json",
+		"compile:renderer": "tsc --project tsconfig.renderer.json",
+		"compile": "npm run compile:extension && npm run compile:renderer",
+		"watch": "tsc --watch --project tsconfig.json",
+		"package": "npm run compile",
+		"lint": "eslint src --ext ts"
+	  },
+	"devDependencies": {
+	  "@types/node": "14.x",
+	  "@types/vscode": "^1.7.0",
+	  "@typescript-eslint/eslint-plugin": "^5.58.0",
+	  "@typescript-eslint/parser": "^5.58.0",
+	  "eslint": "^8.0.0",
+	  "ts-loader": "^9.2.2",
+	  "typescript": "^4.8.4"
+	},
+	"dependencies": {
+	  "mqtt": "^5.10.3"
+	}
+  }
+  

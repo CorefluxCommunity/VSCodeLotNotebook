@@ -1,0 +1,21 @@
+{
+    "iconDefinitions": {
+      "lot-icon": {
+        "iconPath": "./images/CF_icon.svg"
+      }
+    },
+    "fileExtensions": {
+      "cf": "lot-icon",
+      "lot": "lot-icon",
+      "lotnb": "lot-icon"
+    },
+    "fileNames": {
+      ".cf": "lot-icon",
+      ".lot": "lot-icon",
+      ".lotnb": "lot-icon"
+    },
+    "languageIds": {
+      "lot": "lot-icon"
+    }
+  }
+  

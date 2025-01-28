@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    // We want ES modules so it can be dynamically imported by VS Code webview
+    "module": "esnext",
+    "target": "ES2020",
+
+    // The compiled JS for the renderer will go here
+    "outDir": "dist/renderer",
+
+    // We only want DOM types, not Node
+    "lib": [
+      "ES2020",
+      "DOM"
+    ],
+
+    "strict": true,
+    "moduleResolution": "node",
+
+    // Tells TypeScript "no default Node or other library definitions"
+    "types": [],
+
+    // Prevents TS from complaining about conflicts in node_modules
+    "skipLibCheck": true
+  },
+
+  // Only compile the renderer code
+  "include": [
+    "src/renderer/treeRenderer.ts"
+  ]
+}
