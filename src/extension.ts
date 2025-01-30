@@ -98,7 +98,6 @@ export function activate(context: vscode.ExtensionContext) {
 
   });
   context.subscriptions.push(openChatbotCmd);
-
 }
 
 export function deactivate() {

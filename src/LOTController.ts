@@ -10,7 +10,7 @@ type CellStep = 'remove' | 'add' | 'subscribe' | 'live' | 'done' | 'failed';
 interface CellState {
   step: CellStep;
   code: string;
-  type: 'MODEL' | 'ACTION' | 'RULE';
+  type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE';
   name: string;
   execution: vscode.NotebookCellExecution;
   treeState: { [key: string]: boolean }; // Tracks expanded/collapsed state of topics
@@ -67,6 +67,21 @@ export default class LOTController {
     }
   }
 
+  public createHtmlOutput(msg: string, error = false): vscode.NotebookCellOutputItem {
+    const html = `
+        <div style="background-color:${error ? 'rgba(255, 0, 0, 0.10)' : 'rgba(26, 255, 0, 0.10)'}; color:white; padding:5px;">
+          ${msg}
+        </div>
+      `;
+
+    const htmlOutputItem = new vscode.NotebookCellOutputItem(
+      Buffer.from(html, 'utf8'),
+      'text/html'
+    );
+
+    return htmlOutputItem;
+  }
+
   /**
    * Handle interrupt requests for cells in 'live' state (i.e., unsubscribing from topics).
    */
@@ -82,7 +97,7 @@ export default class LOTController {
 
       cellState.execution.replaceOutput([
         new vscode.NotebookCellOutput([
-          vscode.NotebookCellOutputItem.text('Execution interrupted. Unsubscribed from topics.')
+          this.createHtmlOutput('Execution interrupted. Unsubscribed from topics.')
         ])
       ]);
       cellState.execution.end(false, Date.now());
@@ -120,9 +135,7 @@ export default class LOTController {
     if (!parsed) {
       execution.replaceOutput([
         new vscode.NotebookCellOutput([
-          vscode.NotebookCellOutputItem.stderr(
-            'Could not determine if this is a MODEL, RULE, or ACTION or name not found.'
-          )
+          this.createHtmlOutput('Failed to parse entity type and name from code. Expected "DEFINE MODEL <Name>", "DEFINE ACTION <Name>", or "DEFINE RULE <Name".', true)
         ])
       ]);
       execution.end(false, Date.now());
@@ -213,16 +226,16 @@ export default class LOTController {
 
   private _publishCommand(command: string, execution: vscode.NotebookCellExecution, statusMsg: string) {
     const existingItems = execution.cell.outputs?.flatMap(o => o.items) || [];
-    const newOutputItems = [...existingItems, vscode.NotebookCellOutputItem.text(statusMsg)];
+    execution.clearOutput();
+    const newOutputItems = [...existingItems, this.createHtmlOutput(statusMsg)];
 
     execution.replaceOutput([new vscode.NotebookCellOutput(newOutputItems)]);
 
     const topic = '$SYS/Coreflux/Command';
     this._client?.publish(topic, command, { qos: 1 }, err => {
       if (err) {
-        const errOutput = vscode.NotebookCellOutputItem.stderr(`Publish error: ${err.message}`);
         execution.replaceOutput([
-          new vscode.NotebookCellOutput([...existingItems, errOutput])
+          new vscode.NotebookCellOutput([...existingItems, this.createHtmlOutput(`Failed to publish command: ${command}`, true)])
         ]);
         execution.end(false, Date.now());
       } else {
@@ -248,6 +261,7 @@ export default class LOTController {
    * Once we get output from the remove->add->subscribe steps, we decide how to progress.
    */
   private _handleCommandOutput(payload: string) {
+
     for (const [uri, cellState] of this._cellStates.entries()) {
       if (cellState.step === 'failed' || cellState.step === 'done' || cellState.step === 'live') {
         continue;
@@ -260,7 +274,7 @@ export default class LOTController {
       const isNotFound = payload.toLowerCase().includes('not found')
         || payload.toLowerCase().includes('does not exist');
       const isError = payload.toLowerCase().includes('error')
-       || payload.toLowerCase().includes('failed');
+        || payload.toLowerCase().includes('failed');
 
       // If STOP requested, just bail out
       if (cellState.stopRequested) {
@@ -277,6 +291,8 @@ export default class LOTController {
       if (cellState.step === 'remove') {
         if (isSuccess || isNotFound) {
           cellState.step = 'add';
+          cellState.execution.clearOutput();
+
           const addCmd = this._buildAddCommand(cellState.type, cellState.code);
           this._publishCommand(addCmd, exec,
             isSuccess
@@ -284,13 +300,14 @@ export default class LOTController {
               : `${cellState.type} ${cellState.name} not found, proceeding to add anyway...`
           );
         } else if (isError) {
+
+          const item = new vscode.NotebookCellOutput([
+            ...existingItems,
+            this.createHtmlOutput(`Failed to remove ${cellState.type} ${cellState.name}. Output: ${payload}`, true)
+          ])
+
           exec.replaceOutput([
-            new vscode.NotebookCellOutput([
-              ...existingItems,
-              vscode.NotebookCellOutputItem.stderr(
-                `Failed to remove ${cellState.type} ${cellState.name}. Output: ${payload}`
-              )
-            ])
+            item
           ]);
           exec.end(false, Date.now());
           cellState.step = 'failed';
@@ -301,9 +318,7 @@ export default class LOTController {
           exec.replaceOutput([
             new vscode.NotebookCellOutput([
               ...existingItems,
-              vscode.NotebookCellOutputItem.text(
-                `Added ${cellState.type} ${cellState.name} successfully. Subscribing to topics...`
-              )
+              this.createHtmlOutput(`Added ${cellState.type} ${cellState.name} successfully. Subscribing to topics...`)
             ])
           ]);
 
@@ -337,21 +352,27 @@ export default class LOTController {
           }
 
         } else if (isNotFound) {
+
+          const item = new vscode.NotebookCellOutput([
+            ...existingItems,
+            this.createHtmlOutput(`Failed to add ${cellState.type} ${cellState.name}. Output: ${payload}`, true)
+          ])
+
           exec.replaceOutput([
-            new vscode.NotebookCellOutput([
-              ...existingItems,
-              vscode.NotebookCellOutputItem.stderr(`Add step returned 'not found'? Output: ${payload}`)
-            ])
+            item
           ]);
           exec.end(true, Date.now());
           cellState.step = 'failed';
 
         } else if (isError) {
+          const item = new vscode.NotebookCellOutput([
+            ...existingItems,
+            this.createHtmlOutput(`Failed to add ${cellState.type} ${cellState.name}. 
+              Output: ${payload}`, true)
+          ])
+
           exec.replaceOutput([
-            new vscode.NotebookCellOutput([
-              ...existingItems,
-              vscode.NotebookCellOutputItem.stderr(`Failed to add ${cellState.type} ${cellState.name}. Output: ${payload}`)
-            ])
+            item
           ]);
           exec.end(false, Date.now());
           cellState.step = 'failed';
@@ -465,7 +486,6 @@ export default class LOTController {
         return true;
       }
     }
-
     return false;
   }
 
@@ -485,42 +505,45 @@ export default class LOTController {
   /**
    * Builds the remove command for a given entity type.
    */
-  private _buildRemoveCommand(type: 'MODEL'|'ACTION'|'RULE', name: string): string {
+  private _buildRemoveCommand(type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE', name: string): string {
     switch (type) {
-    case 'MODEL':  return `-removeModel ${name}`;
-    case 'ACTION': return `-removeAction ${name}`;
-    case 'RULE':   return `-removeRule ${name}`;
+      case 'MODEL': return `-removeModel ${name}`;
+      case 'ACTION': return `-removeAction ${name}`;
+      case 'RULE': return `-removeRule ${name}`;
+      case 'ROUTE': return `-removeRoute ${name}`;
     }
   }
 
   /**
    * Builds the add command from the cell's code.
    */
-  private _buildAddCommand(type: 'MODEL'|'ACTION'|'RULE', code: string): string {
+  private _buildAddCommand(type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE', code: string): string {
     switch (type) {
-    case 'MODEL':  return `-addModel ${code}`;
-    case 'ACTION': return `-addAction ${code}`;
-    case 'RULE':   return `-addRule ${code}`;
+      case 'MODEL': return `-addModel ${code}`;
+      case 'ACTION': return `-addAction ${code}`;
+      case 'RULE': return `-addRule ${code}`;
+      case 'ROUTE': return `-addRoute ${code}`;
     }
   }
 
   /**
    * Parse code for "DEFINE MODEL <name>" or "DEFINE ACTION <name>" or "DEFINE RULE <name>".
    */
-  private _parseEntityTypeAndName(code: string): { type: 'MODEL'|'ACTION'|'RULE'; name: string } | null {
-    const re = /\bDEFINE\s+(MODEL|ACTION|RULE)\s+([A-Za-z0-9_]+)/i;
+  private _parseEntityTypeAndName(code: string): { type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE'; name: string } | null {
+    const re = /\bDEFINE\s+(MODEL|ACTION|RULE|ROUTE)\s+"?([A-Za-z0-9_]+)"?/i;
     const match = code.match(re);
     if (!match) return null;
-    const entityType = match[1].toUpperCase() as 'MODEL'|'ACTION'|'RULE';
+    const entityType = match[1].toUpperCase() as 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE';
     const entityName = match[2];
     return { type: entityType, name: entityName };
   }
 
-  private _parseInputTopics(type: 'MODEL'|'ACTION'|'RULE', code: string): string[] {
+  private _parseInputTopics(type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE', code: string): string[] {
     let topics: string[] = [];
 
     const withTopicRegex = /\bWITH\s+TOPIC\s+"([^"]+)"/gi;
     let match: RegExpExecArray | null;
+
     while ((match = withTopicRegex.exec(code)) !== null) {
       let t = match[1];
       if (!t.endsWith('#')) t += '/#'; // add wildcard for sub-levels
@@ -540,7 +563,7 @@ export default class LOTController {
     return Array.from(new Set(topics));
   }
 
-  private _parseOutputTopics(type: 'MODEL'|'ACTION'|'RULE', code: string): string[] {
+  private _parseOutputTopics(type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE', code: string): string[] {
     let topics: string[] = [];
     const publishRegex = /\bPUBLISH\s+TOPIC\s+"([^"]+)"/gi;
     let match: RegExpExecArray | null;

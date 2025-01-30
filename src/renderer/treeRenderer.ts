@@ -18,6 +18,7 @@ let chartObjects: Record<string, any> = {};
 
 let chartJsLoaded = false;
 let dateAdapterLoaded = false;
+let colorSelected = "#4bc0c0";
 
 /**
  * Attempt to load Chart.js and chartjs-adapter-date-fns (bundle) from CDN
@@ -87,9 +88,14 @@ export function activate(): RenderOutputFunctions {
         for (const path of Object.keys(chartOpenMap)) {
           if (chartOpenMap[path]) {
             const chartDiv = element.querySelector(`#chartDiv-${escapeId(path)}`) as HTMLDivElement | null;
+            const defaultColorInput = chartDiv?.querySelector<HTMLInputElement>(
+              `#chartColor-${escapeId(path)}`
+            );
+            const defaultColor = defaultColorInput ? defaultColorInput.value : '#4bc0c0';
+
             if (chartDiv) {
               chartDiv.style.display = 'block';
-              updateChart(chartDiv, path);
+              updateChart(chartDiv, path, defaultColor);
             }
           }
         }
@@ -114,7 +120,8 @@ function buildTree(
   parent: HTMLElement,
   node: Record<string, any>,
   path: string,
-  level: number
+  level: number,
+  colorChart: string = '#4bc0c0'
 ): void {
   for (const key of Object.keys(node)) {
     if (key === '_value') continue;
@@ -126,6 +133,7 @@ function buildTree(
     if (typeof val === 'object' && val !== null) {
       // folder
       const details = document.createElement('details');
+      //details.style.backgroundColor = '#f9f9f9';
       if (expanded) details.setAttribute('open', '');
       details.style.marginLeft = `${level * 20}px`;
 
@@ -137,8 +145,14 @@ function buildTree(
         expansionsMap[currentPath] = details.hasAttribute('open');
       });
 
+      const chartDiv = parent.querySelector(`#chartDiv-${escapeId(path)}`) as HTMLDivElement | null;
+      const defaultColorInput = chartDiv?.querySelector<HTMLInputElement>(
+        `#chartColor-${escapeId(path)}`
+      );
+      const defaultColor = defaultColorInput ? defaultColorInput.value : '#4bc0c0';
+
       parent.appendChild(details);
-      buildTree(details, val, currentPath, level + 1);
+      buildTree(details, val, currentPath, level + 1, defaultColor);
 
     } else {
       // leaf
@@ -162,17 +176,17 @@ function buildTree(
           chartDataMap[currentPath] = [];
         }
         chartDataMap[currentPath].push({ time: Date.now(), value: numericVal });
-      
+
         // We'll use a default color and default sizes here:
-        const defaultChartColor = '#4bc0c0'; // could be 'rgb(75, 192, 192)'
+        const defaultChartColor = colorSelected; // could be 'rgb(75, 192, 192)'
         const defaultWidth = 400;
         const defaultHeight = 200;
-      
+
         payloadDiv.innerHTML = `
           <strong>Payload:</strong> ${payloadStr}
           <span
             id="chartBtn-${escapeId(currentPath)}"
-            style="margin-left:10px; cursor:pointer; color:${defaultChartColor};"
+            style="margin-left:10px; cursor:pointer; color:${colorSelected};"
             title="Show chart for numeric payloads"
           >
             <svg
@@ -196,7 +210,7 @@ function buildTree(
             <!-- Chart controls -->
             <div style="margin-bottom: 5px;">
               <label for="chartColor-${escapeId(currentPath)}">Color:</label>
-              <input type="color" id="chartColor-${escapeId(currentPath)}" value="${defaultChartColor}" />
+              <input type="color" id="chartColor-${escapeId(currentPath)}" value="${colorSelected}" />
       
               <label for="chartWidth-${escapeId(currentPath)}" style="margin-left: 10px;">Width:</label>
               <input type="number" id="chartWidth-${escapeId(currentPath)}" value="${defaultWidth}" style="width: 60px;" />
@@ -211,6 +225,7 @@ function buildTree(
             <canvas id="chartCanvas-${escapeId(currentPath)}" width="${defaultWidth}" height="${defaultHeight}"></canvas>
           </div>
         `;
+
       }
       else {
         payloadDiv.innerHTML = `<strong>Payload:</strong> ${payloadStr}`;
@@ -233,21 +248,31 @@ function toggleChart(path: string) {
   const chartDiv = document.getElementById(`chartDiv-${escapeId(path)}`) as HTMLDivElement | null;
   if (!chartDiv) return;
 
+  const defaultColorInput = chartDiv?.querySelector<HTMLInputElement>(
+    `#chartColor-${escapeId(path)}`
+  );
+  const defaultColor = defaultColorInput ? defaultColorInput.value : '#4bc0c0';
+
+  defaultColorInput?.addEventListener('change', (e) => {
+    const newColor = (e.target as HTMLInputElement)?.value;
+    // Store the color or do whatever is needed
+    chartObjects[path].data.datasets[0].borderColor = newColor;
+    colorSelected = newColor;
+  })
+
   if (chartDiv.style.display === 'none') {
     chartDiv.style.display = 'block';
     chartOpenMap[path] = true;
-    updateChart(chartDiv, path);
+    updateChart(chartDiv, path, defaultColor);
   } else {
     chartDiv.style.display = 'none';
     chartOpenMap[path] = false;
   }
 }
 
-
-function updateChart(chartDiv: HTMLDivElement, path: string) {
+function updateChart(chartDiv: HTMLDivElement, path: string, defaultColorChart: string = '#4bc0c0') {
   // If an old chart instance exists, destroy it
   if (chartObjects[path]) {
-    chartObjects[path].destroy();
     chartObjects[path] = null;
   }
 
@@ -281,13 +306,6 @@ function updateChart(chartDiv: HTMLDivElement, path: string) {
     chartDiv.innerText = '[Error] globalThis.Chart is not available.';
     return;
   }
-
-  // Default color (or read from the color input if you want)
-  const defaultColorInput = chartDiv.querySelector<HTMLInputElement>(
-    `#chartColor-${escapeId(path)}`
-  );
-  const defaultColor = defaultColorInput ? defaultColorInput.value : '#4bc0c0';
-
   // Create the chart
   const chart = new ChartCtor(ctx, {
     type: 'line',
@@ -296,7 +314,7 @@ function updateChart(chartDiv: HTMLDivElement, path: string) {
         {
           label: path,
           data: chartDataset,
-          borderColor: defaultColor,
+          borderColor: colorSelected,
           tension: 0.1
         }
       ]
@@ -304,7 +322,7 @@ function updateChart(chartDiv: HTMLDivElement, path: string) {
     options: {
       scales: {
         x: {
-          type: 'time', // requires chartjs-adapter-date-fns
+          type: 'time',
           time: {
             unit: 'second'
           },
@@ -330,7 +348,6 @@ function updateChart(chartDiv: HTMLDivElement, path: string) {
 
   chartObjects[path] = chart;
 
-  // Hook up the "Apply" button to update chart color / size
   const applyBtn = chartDiv.querySelector<HTMLButtonElement>(
     `#chartApply-${escapeId(path)}`
   );
@@ -359,14 +376,25 @@ function updateChart(chartDiv: HTMLDivElement, path: string) {
 
       // Update chart color
       chart.data.datasets[0].borderColor = newColor;
+      colorSelected = newColor;
 
       // Force chart.js to resize & re-render
       chart.resize();
       chart.update();
     });
   }
-}
 
+  const defaultColorInput = chartDiv?.querySelector<HTMLInputElement>(
+    `#chartColor-${escapeId(path)}`
+  );
+
+  defaultColorInput?.addEventListener('change', (e) => {
+    const newColor = (e.target as HTMLInputElement)?.value;
+    // Store the color or do whatever is needed
+    chart.data.datasets[0].borderColor = newColor;
+    colorSelected = newColor;
+  })
+}
 
 function escapeId(path: string): string {
   return path.replace(/[^\w-]/g, '_');

@@ -11,8 +11,8 @@ export class TopicItem extends vscode.TreeItem {
     super(label, vscode.TreeItemCollapsibleState.None);
 
     this.iconPath = {
-      light: path.join(context.extensionPath, 'images', 'CF_icon.svg'),
-      dark: path.join(context.extensionPath, 'images', 'CF_icon.svg')
+      light: vscode.Uri.file(path.join(context.extensionPath, 'images', 'CF_icon.svg')),
+      dark: vscode.Uri.file(path.join(context.extensionPath, 'images', 'CF_icon.svg'))
     };
 
     // The user can click this item in the tree to open the payload
@@ -35,7 +35,7 @@ export class MqttTopicProvider implements vscode.TreeDataProvider<TopicItem> {
   constructor(
     private context: vscode.ExtensionContext,
     private payloadMap: Map<string, string>
-  ) {}
+  ) { }
 
   refresh(): void {
     this._onDidChangeTreeData.fire();
