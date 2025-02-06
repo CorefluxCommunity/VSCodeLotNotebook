@@ -18,7 +18,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Command to create a new .lnt notebook
   const createNotebookCommand = vscode.commands.registerCommand('lot-notebook.create', async () => {
-    const uri = vscode.Uri.parse('untitled:' + 'notebook.lnt');
+    const uri = vscode.Uri.parse('untitled:' + 'notebook.lotnb');
     await vscode.commands.executeCommand('vscode.openWith', uri, 'lot-notebook');
   });
   context.subscriptions.push(createNotebookCommand);

@@ -135,7 +135,7 @@ export default class LOTController {
     if (!parsed) {
       execution.replaceOutput([
         new vscode.NotebookCellOutput([
-          this.createHtmlOutput('Failed to parse entity type and name from code. Expected "DEFINE MODEL <Name>", "DEFINE ACTION <Name>", or "DEFINE RULE <Name".', true)
+          this.createHtmlOutput('Failed to parse entity type and name from code. Expected "DEFINE MODEL <Name>", "DEFINE ACTION <Name>", or "DEFINE ROUTE <Name>, or "DEFINE RULE <Name>".', true)
         ])
       ]);
       execution.end(false, Date.now());
@@ -507,10 +507,10 @@ export default class LOTController {
    */
   private _buildRemoveCommand(type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE', name: string): string {
     switch (type) {
-      case 'MODEL': return `-removeModel ${name}`;
-      case 'ACTION': return `-removeAction ${name}`;
-      case 'RULE': return `-removeRule ${name}`;
-      case 'ROUTE': return `-removeRoute ${name}`;
+    case 'MODEL': return `-removeModel ${name}`;
+    case 'ACTION': return `-removeAction ${name}`;
+    case 'RULE': return `-removeRule ${name}`;
+    case 'ROUTE': return `-removeRoute ${name}`;
     }
   }
 
@@ -519,10 +519,10 @@ export default class LOTController {
    */
   private _buildAddCommand(type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE', code: string): string {
     switch (type) {
-      case 'MODEL': return `-addModel ${code}`;
-      case 'ACTION': return `-addAction ${code}`;
-      case 'RULE': return `-addRule ${code}`;
-      case 'ROUTE': return `-addRoute ${code}`;
+    case 'MODEL': return `-addModel ${code}`;
+    case 'ACTION': return `-addAction ${code}`;
+    case 'RULE': return `-addRule ${code}`;
+    case 'ROUTE': return `-addRoute ${code}`;
     }
   }
 

@@ -28,16 +28,16 @@
 ## Installation
 
 1. **From VSIX**  
-   - Download the `.vsix` file for `LOT Notebooks v0.1.2`.  
+   - Download the `.vsix` file for `LOT Notebooks vx.x.x`.  
    - In VS Code, press `Ctrl+Shift+X` (Extensions panel) → click the `...` menu → **Install from VSIX...** → select the `.vsix`.
 2. **Reload** VS Code.  
 3. **Verify** installation by searching "LOT" in the Extensions panel or checking the extension in the list.
 
 ## Usage
 
-1. **Create a new `.lnt` Notebook**  
+1. **Create a new `.lotnb` Notebook**  
    - Open Command Palette (`Ctrl+Shift+P`) → `LOT Notebook: Create New Notebook`  
-   - A new untitled `.lnt` file opens with the LOT notebook UI.
+   - A new untitled `.lotnb` file opens with the LOT notebook UI.
 
 2. **Add Cells**  
    - Each cell can contain LOT code, e.g.  
@@ -63,7 +63,7 @@
 
 | Command                         | Description                                                                          |
 |--------------------------------|--------------------------------------------------------------------------------------|
-| **LOT Notebook: Create**       | Creates an untitled `.lnt` notebook.                                                |
+| **LOT Notebook: Create**       | Creates an untitled `.lotnb` notebook.                                                |
 | **LOT Notebook: Change Credentials** | Prompts for broker URL, username, password for MQTT connectivity.            |
 | **lot.openTopicPayload**       | Opens a prompt to view/edit payload for an MQTT topic in the TreeView.              |
 

@@ -24,7 +24,7 @@
         "patterns": [
           {
             "name": "keyword.control.lot",
-            "match": "\\b(DEFINE|MODEL|RULE|ACTION|PUBLISH|GET|ON|EVERY|DO|IF|THEN|ELSE)\\b"
+            "match": "\\b(DEFINE|MODEL|RULE|ROUTE|ACTION|PUBLISH|GET|ON|EVERY|DO|IF|THEN|ELSE)\\b"
           }
         ]
       },
