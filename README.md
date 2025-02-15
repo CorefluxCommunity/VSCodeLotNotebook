@@ -1,4 +1,4 @@
-# LOT VSCode Notebooks Extension (v0.2)
+# LOT VSCode Notebooks Extension (v0.2.5)
 
 **LOT Notebooks** is a Visual Studio Code extension that provides:
 - A **notebook** interface for the **LOT** (Language of Things) DSL
@@ -21,9 +21,12 @@
    - Renders numeric payloads in real-time with a custom JSON-based approach
    - Possibly provides charting if the JSON output references numeric data
 
-4. **“Open Chatbot”** Button (per-cell toolbar)  
+4. **“Open Chatbot”** Button (per-cell toolbar / Experimental)  
    - For any cell using the `lot` language, you will see an **Open Chatbot** button in the **toolbar**  
    - Clicking it triggers the command `lot.openChatbot`, which can open your chatbot in a webview panel or external browser
+
+5. **Add  VISU** Button (Experimental)  
+   - Able to create a VIsualization on the fly for realtime monitoring . (experimental) 
 
 ## Installation
 
@@ -83,7 +86,11 @@
 
 ## Release Notes
 
-### v0.2
+### v0.2.5
+
+- Added the Visu add/ remove commands for broker version >1.6
+
+### v0.2.1
 
 - Polished MQTT credential handling  
 - Basic chart display for numeric data in cells

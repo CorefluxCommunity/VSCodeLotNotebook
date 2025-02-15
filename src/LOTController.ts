@@ -10,7 +10,7 @@ type CellStep = 'remove' | 'add' | 'subscribe' | 'live' | 'done' | 'failed';
 interface CellState {
   step: CellStep;
   code: string;
-  type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE';
+  type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE' | 'VISU';
   name: string;
   execution: vscode.NotebookCellExecution;
   treeState: { [key: string]: boolean }; // Tracks expanded/collapsed state of topics
@@ -505,40 +505,42 @@ export default class LOTController {
   /**
    * Builds the remove command for a given entity type.
    */
-  private _buildRemoveCommand(type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE', name: string): string {
+  private _buildRemoveCommand(type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE' | 'VISU', name: string): string {
     switch (type) {
     case 'MODEL': return `-removeModel ${name}`;
     case 'ACTION': return `-removeAction ${name}`;
     case 'RULE': return `-removeRule ${name}`;
     case 'ROUTE': return `-removeRoute ${name}`;
+    case 'VISU': return `-removeVisu ${name}`;
     }
   }
 
   /**
    * Builds the add command from the cell's code.
    */
-  private _buildAddCommand(type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE', code: string): string {
+  private _buildAddCommand(type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE' | 'VISU', code: string): string {
     switch (type) {
     case 'MODEL': return `-addModel ${code}`;
     case 'ACTION': return `-addAction ${code}`;
     case 'RULE': return `-addRule ${code}`;
     case 'ROUTE': return `-addRoute ${code}`;
+    case 'VISU': return `-addRoute ${code}`;
     }
   }
 
   /**
    * Parse code for "DEFINE MODEL <name>" or "DEFINE ACTION <name>" or "DEFINE RULE <name>".
    */
-  private _parseEntityTypeAndName(code: string): { type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE'; name: string } | null {
+  private _parseEntityTypeAndName(code: string): { type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE' | 'VISU'; name: string } | null {
     const re = /\bDEFINE\s+(MODEL|ACTION|RULE|ROUTE)\s+"?([A-Za-z0-9_]+)"?/i;
     const match = code.match(re);
     if (!match) return null;
-    const entityType = match[1].toUpperCase() as 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE';
+    const entityType = match[1].toUpperCase() as 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE' | 'VISU';
     const entityName = match[2];
     return { type: entityType, name: entityName };
   }
 
-  private _parseInputTopics(type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE', code: string): string[] {
+  private _parseInputTopics(type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE' | 'VISU' , code: string): string[] {
     let topics: string[] = [];
 
     const withTopicRegex = /\bWITH\s+TOPIC\s+"([^"]+)"/gi;
@@ -563,7 +565,7 @@ export default class LOTController {
     return Array.from(new Set(topics));
   }
 
-  private _parseOutputTopics(type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE', code: string): string[] {
+  private _parseOutputTopics(type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE' | 'VISU', code: string): string[] {
     let topics: string[] = [];
     const publishRegex = /\bPUBLISH\s+TOPIC\s+"([^"]+)"/gi;
     let match: RegExpExecArray | null;
