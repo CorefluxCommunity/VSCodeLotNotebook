@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- CSP Source MUST be specified in the meta tag -->
+    <!-- <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';"> -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Link to CSS will be injected here -->
+    <link rel="stylesheet" type="text/css" href="${stylesUri}"> 
+    <title>Anselmo Chat</title>
+    <!-- Add CDN includes for libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.0/dist/mermaid.min.js"></script>
+</head>
+<body>
+    <header>
+        <h1>Anselmo Chat</h1>
+        <p id="associated-document" class="associated-doc-text">(No document context)</p>
+    </header>
+    <div id="chat-messages">
+      <!-- Messages will be added here by JS -->
+      <div class="message-container assistant-message"><i>Welcome! Ask Anselmo anything about Language Of Things (LOT).</i></div>
+    </div>
+    
+    <div id="input-area"> 
+      <input type="text" id="message-input" placeholder="Type your message...">
+      <button id="send-button">Send</button>
+    </div>
+
+    <!-- Link to JS will be injected here -->
+    <script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html> 

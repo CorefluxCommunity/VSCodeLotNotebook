@@ -5,35 +5,73 @@
 	"version": "0.2.0",
 	"publisher": "Coreflux",
 	"engines": {
-		"vscode": "^1.81.0"
+		"vscode": "^1.85.0"
 	},
 	"icon": "images/logo.png",
 	"categories": [
 		"Notebooks"
 	],
 	"activationEvents": [
-		"onNotebook:lot-notebook",
-		"onLanguage:lot",
-		"onCommand:lot-notebook.create",
-		"onCommand:lot-notebook.changeCredentials",
-		"onCommand:lot.openTopicPayload"
+		"*"
 	],
 	"main": "./dist/extension.js",
 	"contributes": {
 		"menus": {
-			"notebook/cell/title": [
+			"commandPalette": [
+			],
+			"editor/title": [
+			],
+			"view/title": [
+			],
+			"view/item/context": [
+				{
+					"command": "corefluxEntities.copyCode",
+					"group": "1_modification@1"
+				},
+				{
+					"command": "coreflux.createEntityDefinition",
+					"group": "1_modification@2"
+				},
+				{
+					"command": "coreflux.updateCellFromMqtt",
+					"group": "1_modification@3"
+				},
+				{
+					"command": "coreflux.runEntityCell",
+					"group": "1_modification@4"
+				},
+				{
+					"command": "coreflux.removeEntity",
+					"group": "9_modification@1"
+				},
+				{
+					"command": "corefluxEntities.viewDescription",
+					"when": "viewId == corefluxEntitiesView && viewItem == corefluxEntityDescriptionItem",
+					"group": "inline"
+				}
+			],
+			"notebook/toolbar": [
 				{
 					"command": "lot.openChatbot",
-					"when": "resourceLangId == lot",
-					"group": "inline"
+					"group": "navigation",
+					"when": "notebookType == lot-notebook"
+				}
+			],
+			"notebook/cell/context": [
+				{
+					"command": "lot-notebook.explainCell",
+					"group": "navigation",
+					"when": "notebookType == lot-notebook && notebookCellType == code"
 				}
 			]
 		},
 		"views": {
 			"explorer": [
 				{
-					"id": "lotLiveTree",
-					"name": "LOT Live Tree"
+					"id": "corefluxEntitiesView",
+					"name": "Coreflux Entities",
+					"icon": "images/CF_icon.svg",
+					"contextualTitle": "Coreflux Entities"
 				}
 			]
 		},
@@ -44,17 +82,75 @@
 				"category": "LOT Notebook"
 			},
 			{
-				"command": "lot.openChatbot",
-				"title": "Open Chatbot",
-				"category": "LOT Chatbot"
-			},
-			{
 				"command": "lot-notebook.changeCredentials",
-				"title": "Change MQTT Credentials"
+				"title": "Change MQTT Broker Credentials",
+				"category": "LOT Notebook"
 			},
 			{
 				"command": "lot.openTopicPayload",
-				"title": "Open Topic Payload"
+				"title": "Edit Topic Payload",
+				"category": "LOT Notebook"
+			},
+			{
+				"command": "lot.openChatbot",
+				"title": "🤖 Anselmo ChatBot (beta preview)",
+				"category": "LOT Notebook"
+			},
+			{
+				"command": "corefluxEntities.refresh",
+				"title": "Refresh",
+				"category": "Coreflux",
+				"icon": "$(refresh)"
+			},
+			{
+				"command": "corefluxEntities.copyCode",
+				"title": "📋 Copy Code",
+				"category": "Coreflux"
+			},
+			{
+				"command": "corefluxEntities.viewDescription",
+				"title": "View Description",
+				"category": "Coreflux"
+			},
+			{
+				"command": "coreflux.removeAllModels",
+				"title": "Remove All Models",
+				"category": "Coreflux"
+			},
+			{
+				"command": "coreflux.removeAllActions",
+				"title": "Remove All Actions",
+				"category": "Coreflux"
+			},
+			{
+				"command": "coreflux.removeAllRoutes",
+				"title": "Remove All Routes",
+				"category": "Coreflux"
+			},
+			{
+				"command": "coreflux.removeEntity",
+				"title": "🗑️ Remove Entity from Coreflux",
+				"category": "Coreflux"
+			},
+			{
+				"command": "coreflux.createEntityDefinition",
+				"title": "✨ Create Definition in Notebook",
+				"category": "Coreflux"
+			},
+			{
+				"command": "coreflux.updateCellFromMqtt",
+				"title": "💾 Update Cell from Coreflux",
+				"category": "Coreflux"
+			},
+			{
+				"command": "coreflux.runEntityCell",
+				"title": "⚡ Update Coreflux from Cell",
+				"category": "Coreflux"
+			},
+			{
+				"command": "lot-notebook.explainCell",
+				"title": "Explain Language Of Things Cell with Anselmo",
+				"category": "Language Of Things"
 			}
 		],
 		"notebooks": [
@@ -118,15 +214,22 @@
 	},
 	"devDependencies": {
 		"@types/node": "14.x",
-		"@types/vscode": "^1.81.0",
+		"@types/node-fetch": "^2.6.12",
+		"@types/vscode": "^1.85.0",
 		"@typescript-eslint/eslint-plugin": "^5.58.0",
 		"@typescript-eslint/parser": "^5.58.0",
+		"copy-webpack-plugin": "^13.0.0",
 		"eslint": "^8.0.0",
 		"ts-loader": "^9.2.2",
 		"typescript": "^4.8.4"
 	},
 	"dependencies": {
 		"@types/vscode-notebook-renderer": "^1.72.3",
-		"mqtt": "^5.10.3"
-	}
+		"markdown-it": "^14.1.0",
+		"mermaid": "^10.9.0",
+		"mqtt": "^5.10.3",
+		"node-fetch": "^3.3.2"
+	},
+	"extensionDependencies": [
+	]
 }

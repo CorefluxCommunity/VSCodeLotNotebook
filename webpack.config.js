@@ -3,15 +3,20 @@
 'use strict';
 
 const path = require('path');
+// const CopyPlugin = require("copy-webpack-plugin");
 
 /** @type {import('webpack').Configuration} */
 const config = {
   target: 'node', // VSCode extensions run in Node
   mode: 'none', 
-  entry: './src/extension.ts',
+  entry: {
+    extension: './src/extension.ts',
+    'renderer/treeRenderer': './src/renderer/treeRenderer.ts'
+    // 'media/anselmoChat': './src/media/anselmoChat.js'
+  },
   output: {
     path: path.resolve(__dirname, 'dist'),
-    filename: 'extension.js',
+    filename: '[name].js',
     libraryTarget: 'commonjs2'
   },
   devtool: 'nosources-source-map',
@@ -34,7 +39,14 @@ const config = {
         ]
       }
     ]
-  }
+  },
+  // plugins: [
+  //   new CopyPlugin({
+  //     patterns: [
+  //       { from: "src/media", to: "media" },
+  //     ],
+  //   }),
+  // ],
 };
 
 module.exports = config;

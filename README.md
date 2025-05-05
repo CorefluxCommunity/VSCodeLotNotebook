@@ -21,12 +21,17 @@
    - Renders numeric payloads in real-time with a custom JSON-based approach
    - Possibly provides charting if the JSON output references numeric data
 
-4. **“Open Chatbot”** Button (per-cell toolbar / Experimental)  
-   - For any cell using the `lot` language, you will see an **Open Chatbot** button in the **toolbar**  
-   - Clicking it triggers the command `lot.openChatbot`, which can open your chatbot in a webview panel or external browser
+4. **Anselmo ChatBot (beta preview)**  
+   - Access an integrated ChatBot knowledgeable about Language Of Things (LOT) via the Notebook toolbar icon (🤖).
+   - Ask questions about LOT syntax, concepts, or request code examples.
+   - Includes Markdown rendering, diagram rendering (Mermaid), and code block copying.
 
-5. **Add  VISU** Button (Experimental)  
-   - Able to create a VIsualization on the fly for realtime monitoring . (experimental) 
+5. **“Explain Language Of Things Cell with Anselmo”** (Button per LOT cell)  
+   - Click the comment icon (💬) on any LOT code cell toolbar (or use context menu).
+   - Sends the cell's code to the Anselmo ChatBot for a detailed explanation.
+
+6. **Add VISU Button** (Experimental)  
+   - Able to create a Visualization on the fly for realtime monitoring. (experimental)
 
 ## Installation
 
@@ -58,7 +63,7 @@
    - The extension automatically connects when running a cell if not already connected
 
 5. **Open Chatbot**  
-   - In the cell **toolbar** (the inline buttons), click **Open Chatbot** (it appears if the cell’s language is `lot`)  
+   - In the cell **toolbar** (the inline buttons), click **Open Chatbot** (it appears if the cell's language is `lot`)  
    - The extension runs `lot.openChatbot`, which can open your external chatbot in a webview or external browser  
    - Adjust this logic in your extension code if you want a different chatbot approach
 
@@ -73,18 +78,35 @@
 ## Known Issues / Troubleshooting
 
 - **Cannot find module 'mqtt'**: Ensure `mqtt` is listed under `"dependencies"` in `package.json` and no `.vscodeignore` is excluding `node_modules`.
-- **No cell output**: Double-check you used `DEFINE MODEL|ACTION|RULE`, so the extension’s logic can parse your code.
+- **No cell output**: Double-check you used `DEFINE MODEL|ACTION|RULE`, so the extension's logic can parse your code.
 - **Chatbot** not opening? By default, the command just shows an info message. Modify `lot.openChatbot` in `extension.ts` to open your actual webview or external URL.
 
 ## Further Documentation and Links
 
-- **[Coreflux.org](https://coreflux.org/)**: Coreflux is more than just a self-hosted MQTT broker; it also offers a cloud MQTT broker solution. The company’s focus is on describing data-driven systems and connecting OT devices or events with IT systems via LOT Routes.
+- **[Coreflux.org](https://coreflux.org/)**: Coreflux is more than just a self-hosted MQTT broker; it also offers a cloud MQTT broker solution. The company's focus is on describing data-driven systems and connecting OT devices or events with IT systems via LOT Routes.
 - **[Docs: Language of Things (LOT)](https://docs.coreflux.org/LOT/)**: Overview of what LOT is.
+- **[Docs: LOT Syntax Reference](https://docs.coreflux.org/LOT/syntax/)**: Detailed overview of LOT syntax categories, keywords, and operators.
 - **[Docs: LOT Actions](https://docs.coreflux.org/LOT/actions/)**: Explains how to define and use LOT actions.
 - **[Docs: LOT Models](https://docs.coreflux.org/LOT/models/)**: Explains how models are set up and used in LOT.
 - **[Docs: LOT Rules](https://docs.coreflux.org/LOT/rules/)**: Explains how to write and apply rules in LOT.
 
 ## Release Notes
+
+### v0.3.0
+
+- Added **Coreflux Entities** view:
+    - Tree view displays Models, Actions, Rules, and Routes currently active on the connected MQTT broker.
+    - Status icons indicate if an entity definition exists in the open workspace notebooks and if it's synchronized with the broker.
+- Added Entity synchronization commands (available from context menu in Coreflux Entities view):
+    - **Update Broker from Cell**: Pushes the code from the corresponding notebook cell to the broker.
+    - **Update Cell from Coreflux**: Pulls the code from the broker into the corresponding notebook cell.
+    - **Create Definition in Notebook**: Inserts a `DEFINE` statement for the entity at the cursor in the active notebook.
+    - **Remove Entity from Coreflux**: Sends a command to remove the entity from the broker.
+- Added **Go To Definition** for entities: Clicking an entity in the tree view navigates to its `DEFINE` statement in the corresponding notebook cell.
+- Added **Anselmo ChatBot (beta preview)**:
+    - Integrated webview chatbot accessible from the notebook toolbar.
+    - Provides explanations and assistance for Language Of Things (LOT).
+    - Added **Explain LOT Cell** command to send cell content directly to the chatbot.
 
 ### v0.2.5
 

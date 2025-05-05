@@ -2,8 +2,11 @@
 
 import * as vscode from 'vscode';
 import * as mqtt from 'mqtt';
-import { getOrPromptBrokerCredentials } from './credentials';
+import * as fs from 'fs'; // Import fs for reading certificate files
+import { getOrPromptBrokerCredentials, MqttCredentials } from './credentials'; // Import interface
 import { MqttTopicProvider } from './MqttTopicProvider';
+import { EventEmitter } from 'events'; // Import EventEmitter
+import { CorefluxEntitiesProvider } from './CorefluxEntitiesProvider'; // Import provider
 
 type CellStep = 'remove' | 'add' | 'subscribe' | 'live' | 'done' | 'failed';
 
@@ -19,7 +22,10 @@ interface CellState {
   subscribedTopics: string[];
 }
 
-export default class LOTController {
+// Type alias for valid entity types
+type EntityTypeString = 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE' | 'VISU';
+
+export default class LOTController extends EventEmitter { // Extend EventEmitter
   readonly controllerId = 'lot-notebook-controller-id';
   readonly notebookType = 'lot-notebook';
   readonly label = 'LOT Notebook';
@@ -30,8 +36,10 @@ export default class LOTController {
 
   private _client?: mqtt.MqttClient;
   private _connected = false;
+  private currentBrokerUrl: string | null = null; // Store broker URL for status
 
   private _cellStates = new Map<string, CellState>();
+  private _entitiesProvider: CorefluxEntitiesProvider;
 
   private _context: vscode.ExtensionContext;
   private _topicProvider: MqttTopicProvider;
@@ -40,11 +48,14 @@ export default class LOTController {
   constructor(
     context: vscode.ExtensionContext,
     topicProvider: MqttTopicProvider,
-    payloadMap: Map<string, string>
+    payloadMap: Map<string, string>,
+    entitiesProvider: CorefluxEntitiesProvider // Inject provider
   ) {
+    super(); // Call EventEmitter constructor
     this._context = context;
     this._topicProvider = topicProvider;
     this._payloadMap = payloadMap;
+    this._entitiesProvider = entitiesProvider; // Store provider reference
 
     this._controller = vscode.notebooks.createNotebookController(
       this.controllerId,
@@ -58,6 +69,9 @@ export default class LOTController {
     // Attach the execute and interrupt handlers
     this._controller.executeHandler = this._execute.bind(this);
     this._controller.interruptHandler = this._handleInterrupt.bind(this);
+
+    // Add dispose logic for status items
+    context.subscriptions.push(this._controller);
   }
 
   public dispose(): void {
@@ -83,32 +97,55 @@ export default class LOTController {
   }
 
   /**
-   * Handle interrupt requests for cells in 'live' state (i.e., unsubscribing from topics).
+   * Handle interrupt requests (stops all running cells in the target notebook).
    */
   private async _handleInterrupt(notebook: vscode.NotebookDocument): Promise<void> {
     console.log(`Interrupt requested for notebook: ${notebook.uri.toString()}`);
+    let interruptedCount = 0;
 
-    for (const [uri, cellState] of this._cellStates.entries()) {
-      if (cellState.step !== 'live') continue;
+    for (const cell of notebook.getCells()) {
+      const cellUri = cell.document.uri.toString();
+      const cellState = this._cellStates.get(cellUri);
 
-      // Unsubscribe
-      this._unsubscribeFromTopics(cellState.subscribedTopics);
-      console.log(`Unsubscribed from topics for cell: ${uri}`);
-
-      cellState.execution.replaceOutput([
-        new vscode.NotebookCellOutput([
-          this.createHtmlOutput('Execution interrupted. Unsubscribed from topics.')
-        ])
-      ]);
-      cellState.execution.end(false, Date.now());
-      cellState.step = 'done';
+      // Check if there is an active execution state for this cell
+      if (cellState && cellState.execution && (cellState.step !== 'done' && cellState.step !== 'failed')) {
+        console.log(`Interrupting cell: ${cellUri} in step: ${cellState.step}`);
+        try {
+          // Unsubscribe if needed
+          if (cellState.subscribedTopics.length > 0) {
+            this._unsubscribeFromTopics(cellState.subscribedTopics);
+          }
+          // End the execution
+          cellState.execution.end(false, Date.now()); // Mark as not success
+          cellState.step = 'failed'; // Mark state as failed/interrupted
+          // Optionally add output to the cell indicating interruption
+          cellState.execution.replaceOutput([
+            new vscode.NotebookCellOutput([
+              this.createHtmlOutput('Execution Interrupted by User.', true)
+            ])
+          ]);
+          // Remove from map? Delay to allow output to show?
+          this._cellStates.delete(cellUri);
+          interruptedCount++;
+        } catch (e) {
+          console.error(`Error during cell interruption for ${cellUri}:`, e);
+          // Ensure state is marked as failed even if ending execution threw error
+          if(cellState) cellState.step = 'failed';
+          this._cellStates.delete(cellUri);
+        }
+      }
     }
 
-    console.log('Interrupt handling complete.');
+    if (interruptedCount > 0) {
+      console.log(`Interrupted ${interruptedCount} cell(s).`);
+    } else {
+      console.log('No active cells found to interrupt for this notebook.');
+    }
   }
 
   /**
    * Execution entrypoint for notebook cells.
+   * Passes execution object and cancellation token down.
    */
   private async _execute(
     cells: vscode.NotebookCell[],
@@ -116,105 +153,279 @@ export default class LOTController {
     _controller: vscode.NotebookController
   ): Promise<void> {
     for (const cell of cells) {
-      await this._doExecution(cell);
+      const execution = this._controller.createNotebookCellExecution(cell);
+      // Wrap _doExecution in a try-catch to ensure execution always ends
+      try {
+        await this._doExecution(cell, execution, execution.token);
+      } catch (error) {
+        console.error(`Error during cell execution for ${cell.document.uri}:`, error);
+        if (!execution.token.isCancellationRequested) { // Don't overwrite cancellation end
+          execution.end(false, Date.now());
+        }
+        // Clean up state if necessary
+        this._cellStates.delete(cell.document.uri.toString());
+      }
     }
   }
 
   /**
-   * Actual cell execution logic: parse code, remove old entity, add new one, subscribe to topics, etc.
+   * Actual cell execution logic.
+   * Accepts execution and token.
    */
-  private async _doExecution(cell: vscode.NotebookCell): Promise<void> {
-    const execution = this._controller.createNotebookCellExecution(cell);
+  private async _doExecution(cell: vscode.NotebookCell, execution: vscode.NotebookCellExecution, token: vscode.CancellationToken): Promise<void> {
     execution.executionOrder = ++this._executionOrder;
     execution.start(Date.now());
 
-    const code = cell.document.getText();
+    const cellUri = cell.document.uri.toString();
 
-    // parse the code for "DEFINE MODEL <Name>", "DEFINE ACTION <Name>", or "DEFINE RULE <Name>"
-    const parsed = this._parseEntityTypeAndName(code);
-    if (!parsed) {
-      execution.replaceOutput([
-        new vscode.NotebookCellOutput([
-          this.createHtmlOutput('Failed to parse entity type and name from code. Expected "DEFINE MODEL <Name>", "DEFINE ACTION <Name>", or "DEFINE ROUTE <Name>, or "DEFINE RULE <Name>".', true)
-        ])
-      ]);
+    // Register cancellation handler *early*
+    const cancellationListener = token.onCancellationRequested(() => {
+      console.log(`Cancellation requested for cell: ${cellUri}`);
+      // End the execution - VS Code handles UI
       execution.end(false, Date.now());
-      return;
-    }
-    const { type, name } = parsed;
-    const stopRequested = code.toUpperCase().includes('STOP');
+      // Clean up state associated with this specific execution
+      const cellState = this._cellStates.get(cellUri);
+      if (cellState) {
+        // Unsubscribe if needed
+        if (cellState.subscribedTopics.length > 0) {
+          console.log(`Unsubscribing topics for cancelled cell: ${cellUri}`);
+          this._unsubscribeFromTopics(cellState.subscribedTopics);
+        }
+        // Mark internal state as done/failed?
+        // Setting to failed prevents further processing in _handleCommandOutput
+        cellState.step = 'failed';
+        // Remove from map later? Maybe in a finally block?
+        // For now, leave it marked as failed.
+      }
+    });
 
-    // create cellState
-    const cellState: CellState = {
-      step: 'remove',
-      code,
-      type,
-      name,
-      execution,
-      stopRequested,
-      liveTree: {},
-      subscribedTopics: [],
-      treeState: {}
-    };
-    this._cellStates.set(cell.document.uri.toString(), cellState);
-
-    // If not connected, connect to MQTT
-    if (!this._connected) {
-      const success = await this._connectMqtt();
-      if (!success) {
-        execution.replaceOutput([
-          new vscode.NotebookCellOutput([
-            vscode.NotebookCellOutputItem.stderr('Failed to connect to MQTT broker.')
-          ])
-        ]);
+    try { // Wrap main logic in try-finally to dispose listener
+      const code = cell.document.getText();
+      const parsed = this._parseEntityTypeAndName(code);
+      if (!parsed) {
+        execution.replaceOutput([new vscode.NotebookCellOutput([this.createHtmlOutput('Failed to parse entity type and name from code. Expected "DEFINE MODEL <Name>", "DEFINE ACTION <Name>", or "DEFINE ROUTE <Name>, or "DEFINE RULE <Name>".', true)])]);
         execution.end(false, Date.now());
-        this._cellStates.delete(cell.document.uri.toString());
         return;
       }
+      const { type, name } = parsed;
+      const stopRequested = code.toUpperCase().includes('STOP');
+
+      const cellState: CellState = {
+        step: 'remove',
+        code,
+        type,
+        name,
+        execution,
+        stopRequested,
+        liveTree: {},
+        subscribedTopics: [],
+        treeState: {}
+      };
+      this._cellStates.set(cellUri, cellState);
+
+      if (token.isCancellationRequested) { return; }
+
+      if (!this._connected) {
+        const success = await this._connectMqtt();
+        if (!success) {
+          execution.replaceOutput([new vscode.NotebookCellOutput([vscode.NotebookCellOutputItem.stderr('Failed to connect to MQTT broker.')])]);
+          execution.end(false, Date.now());
+          this._cellStates.delete(cellUri);
+          return;
+        }
+        if (token.isCancellationRequested) { return; }
+      }
+
+      if (token.isCancellationRequested) { return; }
+
+      const removeCmd = this._buildRemoveCommand(type, name);
+      await this._publishCommand(removeCmd, execution, `Removing ${type} ${name}...`, token);
+
+      // Note: Further steps happen asynchronously in _handleCommandOutput
+
+    } finally {
+      // Dispose the cancellation listener when execution finishes or errors
+      cancellationListener.dispose();
     }
+  }
 
-    // Subscribe to command output
-    this._subscribeToTopic('$SYS/Coreflux/Command/Output');
-
-    // Begin the remove->add->subscribe->live steps
-    const removeCmd = this._buildRemoveCommand(type, name);
-    this._publishCommand(removeCmd, execution, `Removing ${type} ${name}...`);
+  /**
+   * Initiates MQTT connection if not already connected or attempting to reconnect.
+   * Useful for triggering the initial connection explicitly.
+   */
+  public async connectMqttIfNeeded(): Promise<void> {
+    if (!this._connected && !this._client?.reconnecting) {
+      console.log('connectMqttIfNeeded called, attempting connection...');
+      this.emit('connecting');
+      try {
+        await this._connectMqtt();
+      } catch (error) {
+        console.error('connectMqttIfNeeded failed:', error);
+      }
+    } else if (this._connected) {
+      console.log('connectMqttIfNeeded called, already connected.');
+      this.emit('connected', this._client, this.currentBrokerUrl);
+    } else {
+      console.log('connectMqttIfNeeded called, connection already in progress (reconnecting).');
+      this.emit('connecting');
+    }
   }
 
   private async _connectMqtt(): Promise<boolean> {
-    if (this._connected) return true;
+    if (this._connected && this._client) {
+      console.log('Already connected.');
+      this.emit('connected', this._client, this.currentBrokerUrl);
+      return true;
+    }
+    this._connected = false;
+
+    let credentials: MqttCredentials;
     try {
-      const { brokerUrl, username, password } = await getOrPromptBrokerCredentials(this._context);
+      credentials = await getOrPromptBrokerCredentials(this._context);
+      this.currentBrokerUrl = credentials.brokerUrl;
+    } catch (err: any) {
+      console.error('Failed to get MQTT credentials:', err);
+      vscode.window.showErrorMessage(`Failed to get MQTT credentials: ${err.message}`);
+      this.currentBrokerUrl = null;
+      this.emit('disconnected');
+      return false;
+    }
 
-      this._client = mqtt.connect(brokerUrl, { username, password });
-      this._client.on('message', (topic, payloadBuf) => {
-        const payload = payloadBuf.toString();
-        this._handleMqttMessage(topic, payload);
-      });
-      this._client.on('error', err => {
-        console.error('MQTT connect error:', err);
-      });
+    this.emit('connecting');
 
-      return await new Promise<boolean>(resolve => {
-        if (!this._client) {
-          resolve(false);
-          return;
+    const options: mqtt.IClientOptions = {
+      username: credentials.username,
+      password: credentials.password,
+    };
+
+    if (credentials.useTls) {
+      options.protocol = 'mqtts';
+      options.rejectUnauthorized = credentials.rejectUnauthorized;
+
+      try {
+        if (credentials.caPath) {
+          options.ca = fs.readFileSync(credentials.caPath);
+          console.log(`Loaded CA certificate from: ${credentials.caPath}`);
         }
+        if (credentials.certPath) {
+          options.cert = fs.readFileSync(credentials.certPath);
+          console.log(`Loaded client certificate from: ${credentials.certPath}`);
+        }
+        if (credentials.keyPath) {
+          options.key = fs.readFileSync(credentials.keyPath);
+          console.log(`Loaded client key from: ${credentials.keyPath}`);
+        }
+      } catch (err: any) {
+        console.error('Error reading certificate file:', err);
+        vscode.window.showErrorMessage(`Error reading certificate file: ${err.message}`);
+        return false;
+      }
+    }
 
-        this._client.on('connect', () => {
+    try {
+      console.log(`Attempting MQTT connection to ${credentials.brokerUrl}...`);
+      if (this._client) {
+        this._client.removeAllListeners();
+        this._client.end(true);
+        this._client = undefined;
+      }
+
+      this._client = mqtt.connect(credentials.brokerUrl, options);
+
+      this._client.on('connect', () => {
+        if (!this._connected) {
           this._connected = true;
-          console.log(`MQTT connected to ${brokerUrl} as user: ${username}`);
+          console.log(`MQTT connected successfully to ${this.currentBrokerUrl} as user: ${credentials.username}`);
+
+
+          this.emit('connected', this._client, this.currentBrokerUrl);
+        }
+      });
+
+      this._client.on('message', (topic, payloadBuf) => {
+        // console.log(`[MQTT Client] 'message' event fired. Topic: ${topic}`);
+        this._handleMqttMessage(topic, payloadBuf.toString());
+      });
+
+      this._client.on('error', (err) => {
+        console.error('[MQTT Client] Received "error" event:', err);
+        if (this._connected) {
+          this._connected = false;
+          this.emit('disconnected');
+        }
+      });
+
+      this._client.on('close', () => {
+        console.log('[MQTT Client] Received "close" event.');
+        if (this._connected) {
+          this._connected = false;
+          this.emit('disconnected');
+        }
+      });
+
+      // ADDED HANDLERS for more diagnostics
+      this._client.on('reconnect', () => {
+        console.log('[MQTT Client] Received "reconnect" event.');
+        this.emit('connecting'); // Signal reconnect attempt
+      });
+
+      this._client.on('offline', () => {
+        console.log('[MQTT Client] Received "offline" event.');
+        if (this._connected) {
+          this._connected = false;
+          this.emit('disconnected');
+        }
+      });
+
+      return await new Promise<boolean>((resolve, reject) => {
+        if (!this._client) return reject(new Error('Client not initialized'));
+
+        const connectTimeout = setTimeout(() => {
+          console.error(`MQTT connection to ${this.currentBrokerUrl} timed out.`);
+          this._client?.end(true);
+          this._connected = false;
+          this.emit('disconnected');
+          reject(new Error('Connection timed out'));
+        }, 15000);
+
+        this._client.once('connect', () => {
+          clearTimeout(connectTimeout);
           resolve(true);
         });
+
+        this._client.once('error', (err) => {
+          clearTimeout(connectTimeout);
+          reject(err);
+        });
+
+        this._client.once('close', () => {
+          clearTimeout(connectTimeout);
+          if (!this._connected) {
+            console.log('Connection closed before establishing.');
+            this.emit('disconnected');
+            reject(new Error('Connection closed before establishing'));
+          }
+        });
       });
-    } catch (err) {
-      console.error('Error connecting to MQTT:', err);
+
+    } catch (err: any) {
+      console.error('Error initiating MQTT connection:', err);
+      vscode.window.showErrorMessage(`Error initiating MQTT connection: ${err.message}`);
+      this._connected = false;
+      this.currentBrokerUrl = null;
+      this.emit('disconnected');
       return false;
     }
   }
 
+  /**
+   * Subscribe to a single topic.
+   */
   private _subscribeToTopic(topic: string) {
-    if (!this._client || !this._connected) return;
+    if (!this._client || !this._connected) {
+      console.warn(`Cannot subscribe to ${topic}, client not connected.`);
+      return;
+    }
     this._client.subscribe(topic, { qos: 1 }, err => {
       if (err) {
         console.error(`Failed to subscribe to ${topic}:`, err);
@@ -224,23 +435,52 @@ export default class LOTController {
     });
   }
 
-  private _publishCommand(command: string, execution: vscode.NotebookCellExecution, statusMsg: string) {
-    const existingItems = execution.cell.outputs?.flatMap(o => o.items) || [];
-    execution.clearOutput();
-    const newOutputItems = [...existingItems, this.createHtmlOutput(statusMsg)];
-
-    execution.replaceOutput([new vscode.NotebookCellOutput(newOutputItems)]);
-
-    const topic = '$SYS/Coreflux/Command';
-    this._client?.publish(topic, command, { qos: 1 }, err => {
-      if (err) {
-        execution.replaceOutput([
-          new vscode.NotebookCellOutput([...existingItems, this.createHtmlOutput(`Failed to publish command: ${command}`, true)])
-        ]);
-        execution.end(false, Date.now());
-      } else {
-        console.log(`Published: ${command}`);
+  /**
+   * Publish command, checking cancellation token.
+   */
+  private _publishCommand(command: string, execution: vscode.NotebookCellExecution, statusMsg: string, token: vscode.CancellationToken): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (token.isCancellationRequested) {
+        console.log('Skipping publish command due to cancellation.');
+        return resolve();
       }
+      const cellUri = execution.cell.document.uri.toString();
+      const cellState = this._cellStates.get(cellUri);
+      // Double check if state is still valid before publishing next step
+      if (!cellState || cellState.step === 'failed' || cellState.step === 'done') {
+        console.log(`Skipping publish (no token) because cell state is terminal: ${cellUri}`);
+        return resolve();
+      }
+
+      const existingItems = execution.cell.outputs?.flatMap(o => o.items) || [];
+      execution.clearOutput();
+      const newOutputItems = [...existingItems, this.createHtmlOutput(statusMsg)];
+      execution.replaceOutput([new vscode.NotebookCellOutput(newOutputItems)]);
+
+      const topic = '$SYS/Coreflux/Command';
+      console.log(`Publishing command (checking token): ${command}`);
+
+      this._client?.publish(topic, command, { qos: 1 }, err => {
+        if (token.isCancellationRequested) {
+          console.log('Command publish callback ignored due to cancellation.');
+          return resolve();
+        }
+        if (err) {
+          console.error(`Failed to publish command '${command}':`, err);
+          try {
+            execution.replaceOutput([
+              new vscode.NotebookCellOutput([...existingItems, this.createHtmlOutput(`Failed to publish command: ${command}`, true)])
+            ]);
+            execution.end(false, Date.now());
+            if (cellState) cellState.step = 'failed'; // Mark as failed on error
+            this._cellStates.delete(cellUri);
+          } catch (e) { console.error("Error ending execution in publish callback:", e); }
+          reject(err);
+        } else {
+          console.log(`Published: ${command}`);
+          resolve();
+        }
+      });
     });
   }
 
@@ -258,133 +498,166 @@ export default class LOTController {
   }
 
   /**
-   * Once we get output from the remove->add->subscribe steps, we decide how to progress.
+   * Handles command output.
    */
   private _handleCommandOutput(payload: string) {
+    console.log(`>>> _handleCommandOutput ENTERED with payload: "${payload}"`);
+    let processed = false;
 
     for (const [uri, cellState] of this._cellStates.entries()) {
       if (cellState.step === 'failed' || cellState.step === 'done' || cellState.step === 'live') {
         continue;
       }
 
-      const exec = cellState.execution;
-      const existingItems = exec.cell.outputs?.flatMap(o => o.items) || [];
+      const { execution, type, name, code } = cellState;
+      const lowerPayload = payload.toLowerCase();
 
-      const isSuccess = payload.toLowerCase().includes('successfully');
-      const isNotFound = payload.toLowerCase().includes('not found')
-        || payload.toLowerCase().includes('does not exist');
-      const isError = payload.toLowerCase().includes('error')
-        || payload.toLowerCase().includes('failed');
+      console.log(`[${uri}] Checking output against: Step=${cellState.step}, Name=${name}`); // Log cell info
 
-      // If STOP requested, just bail out
-      if (cellState.stopRequested) {
-        this._unsubscribeFromTopics(cellState.subscribedTopics);
-        exec.replaceOutput([
-          new vscode.NotebookCellOutput([
-            vscode.NotebookCellOutputItem.text('STOP requested. Unsubscribed from all topics.')
-          ])
-        ]);
-        exec.end(true, Date.now());
-        cellState.step = 'done';
+      // Relevance Check
+      const isSuccess = lowerPayload.includes('success');
+      const isNotFound = lowerPayload.includes('not found') || lowerPayload.includes('does not exist');
+      const mentionsName = payload.includes(name);
+      let isRelevant = false;
+      if (cellState.step === 'remove' && mentionsName && (isSuccess || isNotFound || lowerPayload.includes('error') || lowerPayload.includes('failed'))) {
+        isRelevant = true;
+      } else if (cellState.step === 'add' && mentionsName && (isSuccess || isNotFound || lowerPayload.includes('error') || lowerPayload.includes('failed'))) {
+        isRelevant = true;
       }
 
+      if (!isRelevant) {
+        continue;
+      }
+
+      console.log(`[${uri}] Processing relevant output for step ${cellState.step}`);
+      processed = true;
+
+      const isActualError = (lowerPayload.includes('error') || lowerPayload.includes('failed'))
+                          && !(cellState.step === 'remove' && isNotFound);
+
+      console.log(`[${uri}] Calculated flags: isSuccess=${isSuccess}, isNotFound=${isNotFound}, isActualError=${isActualError}`); // Log flags
+
       if (cellState.step === 'remove') {
+        console.log(`[${uri}] DEBUG: Remove Step Check. Payload: "${payload}"`); // Log exact payload
+        console.log(`[${uri}] DEBUG: Remove Step Check. Expected Name: "${name}"`); // Log expected name
+        console.log(`[${uri}] DEBUG: Remove Step Check. Calculated Flags: isSuccess=${isSuccess}, isNotFound=${isNotFound}, mentionsName=${mentionsName}, isRelevant=${isRelevant}, isActualError=${isActualError}`); // Log calculated flags
+
         if (isSuccess || isNotFound) {
+          console.log(`[${uri}] DEBUG: Remove Step - Transitioning to add. Condition (isSuccess || isNotFound) met.`); // Log transition decision
           cellState.step = 'add';
-          cellState.execution.clearOutput();
-
-          const addCmd = this._buildAddCommand(cellState.type, cellState.code);
-          this._publishCommand(addCmd, exec,
+          const addCmd = this._buildAddCommand(type, code);
+          // Add log before calling publish
+          console.log(`[${uri}] DEBUG: Calling _publishCommand_noToken with command: "${addCmd}"`);
+          this._publishCommand_noToken(addCmd, execution,
             isSuccess
-              ? `Removed ${cellState.type} ${cellState.name} successfully. Now adding...`
-              : `${cellState.type} ${cellState.name} not found, proceeding to add anyway...`
+              ? `Removed ${type} ${name}. Now adding...`
+              : `${type} ${name} not found. Adding...`
           );
-        } else if (isError) {
-
-          const item = new vscode.NotebookCellOutput([
-            ...existingItems,
-            this.createHtmlOutput(`Failed to remove ${cellState.type} ${cellState.name}. Output: ${payload}`, true)
-          ])
-
-          exec.replaceOutput([
-            item
-          ]);
-          exec.end(false, Date.now());
+        } else if (isActualError) {
+          console.log(`[${uri}] DEBUG: Remove Step - Failing due to isActualError.`); // Log failure decision
+          const item = new vscode.NotebookCellOutput([this.createHtmlOutput(`Failed to remove ${type} ${name}. Output: ${payload}`, true)]);
+          execution.replaceOutput([item]);
+          execution.end(false, Date.now());
+          cellState.step = 'failed';
+        } else {
+          console.log(`[${uri}] DEBUG: Remove Step - Failing due to unknown output.`); // Log unknown output failure
+          const item = new vscode.NotebookCellOutput([this.createHtmlOutput(`Unknown remove output for ${type} ${name}: ${payload}`, true)]);
+          execution.replaceOutput([item]);
+          execution.end(false, Date.now());
           cellState.step = 'failed';
         }
       } else if (cellState.step === 'add') {
+        console.log(`[${uri}] DEBUG: Add Step Check. Payload: "${payload}"`); // Log payload for add step too
+        console.log(`[${uri}] DEBUG: Add Step Check. Calculated Flags: isSuccess=${isSuccess}, isNotFound=${isNotFound}, isActualError=${isActualError}`); // Log flags for add step
+        console.log(`[${uri}] Add Step: Checking conditions...`);
         if (isSuccess) {
+          console.log(`[${uri}] Add Step: Condition (isSuccess) met. Transitioning to subscribe.`);
           cellState.step = 'subscribe';
-          exec.replaceOutput([
-            new vscode.NotebookCellOutput([
-              ...existingItems,
-              this.createHtmlOutput(`Added ${cellState.type} ${cellState.name} successfully. Subscribing to topics...`)
-            ])
-          ]);
+          execution.replaceOutput([new vscode.NotebookCellOutput([this.createHtmlOutput(`Added ${type} ${name} successfully. Subscribing...`)])]);
 
-          const inputTopics = this._parseInputTopics(cellState.type, cellState.code);
-          const outputTopics = this._parseOutputTopics(cellState.type, cellState.code);
-
+          const inputTopics = this._parseInputTopics(type, code);
+          const outputTopics = this._parseOutputTopics(type, code);
           cellState.subscribedTopics = [...inputTopics, ...outputTopics];
+          // Subscribe to topics
           for (const t of cellState.subscribedTopics) {
             this._subscribeToTopic(t);
           }
 
+          // Determine final state (live or done)
           if (cellState.stopRequested) {
-            exec.replaceOutput([
-              new vscode.NotebookCellOutput([
-                ...existingItems,
-                vscode.NotebookCellOutputItem.text(`Subscribed to:\n${cellState.subscribedTopics.join('\n')}`),
-                vscode.NotebookCellOutputItem.text(`STOP requested. Ending now.`)
-              ])
-            ]);
-            exec.end(true, Date.now());
-            cellState.step = 'done';
+            execution.replaceOutput([
+              new vscode.NotebookCellOutput([vscode.NotebookCellOutputItem.text(`Subscribed to:\n${cellState.subscribedTopics.join('\n')}`),vscode.NotebookCellOutputItem.text(`STOP requested. Ending now.`)])]);
+            execution.end(true, Date.now());
+            cellState.step = 'done'; // Mark as done
           } else {
             cellState.step = 'live';
-            exec.replaceOutput([
-              new vscode.NotebookCellOutput([
-                ...existingItems,
-                vscode.NotebookCellOutputItem.text(`Subscribed to:\n${cellState.subscribedTopics.join('\n')}`),
-                vscode.NotebookCellOutputItem.text(`**LIVE MODE** - new messages for these topics appear below.`)
-              ])
-            ]);
+            execution.replaceOutput([new vscode.NotebookCellOutput([vscode.NotebookCellOutputItem.text(`Subscribed to:\n${cellState.subscribedTopics.join('\n')}`),vscode.NotebookCellOutputItem.text(`**LIVE MODE** - new messages will appear below.`)])]);
           }
-
-        } else if (isNotFound) {
-
-          const item = new vscode.NotebookCellOutput([
-            ...existingItems,
-            this.createHtmlOutput(`Failed to add ${cellState.type} ${cellState.name}. Output: ${payload}`, true)
-          ])
-
-          exec.replaceOutput([
-            item
-          ]);
-          exec.end(true, Date.now());
+        } else if (isActualError || isNotFound) {
+          console.log(`[${uri}] Add Step: Condition (isActualError || isNotFound) met. Failing.`);
+          const item = new vscode.NotebookCellOutput([this.createHtmlOutput(`Failed to add ${type} ${name}. Output: ${payload}`, true)]);
+          execution.replaceOutput([item]);
+          execution.end(false, Date.now());
           cellState.step = 'failed';
-
-        } else if (isError) {
-          const item = new vscode.NotebookCellOutput([
-            ...existingItems,
-            this.createHtmlOutput(`Failed to add ${cellState.type} ${cellState.name}. 
-              Output: ${payload}`, true)
-          ])
-
-          exec.replaceOutput([
-            item
-          ]);
-          exec.end(false, Date.now());
+        } else {
+          console.log(`[${uri}] Add Step: No condition met. Treating as unknown/failure.`);
+          const item = new vscode.NotebookCellOutput([this.createHtmlOutput(`Unknown add output for ${type} ${name}: ${payload}`, true)]);
+          execution.replaceOutput([item]);
+          execution.end(false, Date.now());
           cellState.step = 'failed';
         }
       }
     }
 
-    // Cleanup: remove states that are done or failed
+    if (!processed) {
+      console.log('Command output received, but no relevant active cell state found to process it.');
+    }
+
+    // Cleanup logic might need adjustment if we break early
+    // It might be better to clean up at the end of _doExecution or on explicit cancellation/error
     for (const [uri, st] of this._cellStates.entries()) {
-      if (st.step === 'done' || st.step === 'failed') {
+      if (st.step === 'failed' || st.step === 'done') { // Check for done too
+        console.log(`Cleaning up terminal state (${st.step}) for cell: ${uri}`);
         this._cellStates.delete(uri);
       }
+    }
+  }
+
+  /** Temporary publish without token check - Used by _handleCommandOutput */
+  private _publishCommand_noToken(command: string, execution: vscode.NotebookCellExecution, statusMsg: string) {
+    // Only proceed if the execution hasn't already been ended (e.g., by cancellation)
+    // This requires checking internal state of execution if possible, or rely on try/catch
+    try {
+      const cellUri = execution.cell.document.uri.toString();
+      const cellState = this._cellStates.get(cellUri);
+      // Double check if state is still valid before publishing next step
+      if (!cellState || cellState.step === 'failed' || cellState.step === 'done') {
+        console.log(`Skipping publish (no token) because cell state is terminal: ${cellUri}`);
+        return;
+      }
+
+      const existingItems = execution.cell.outputs?.flatMap(o => o.items) || [];
+      execution.clearOutput();
+      const newOutputItems = [...existingItems, this.createHtmlOutput(statusMsg)];
+      execution.replaceOutput([new vscode.NotebookCellOutput(newOutputItems)]);
+
+      const topic = '$SYS/Coreflux/Command';
+      this._client?.publish(topic, command, { qos: 1 }, err => {
+        if (err) {
+          console.error(`Failed to publish command (no token) '${command}':`, err);
+          const errorItem = new vscode.NotebookCellOutput([this.createHtmlOutput(`Failed to publish command: ${command}`, true)]);
+          try {
+            execution.replaceOutput([errorItem]);
+            execution.end(false, Date.now());
+            if (cellState) cellState.step = 'failed'; // Mark as failed on error
+            this._cellStates.delete(cellUri);
+          } catch (e) { console.error("Error ending execution in publish_noToken callback:", e); }
+        } else {
+          console.log(`Published (no token check): ${command}`);
+        }
+      });
+    } catch (e) {
+      console.error("Error during publish_noToken (likely execution ended):", e);
     }
   }
 
@@ -418,31 +691,63 @@ export default class LOTController {
 
   /**
    * Called whenever a new MQTT message arrives.
-   * If a cell is in 'live' mode and the topic matches subscribed patterns,
-   * we insert that topic/payload into cellState.liveTree, then re-emit the JSON tree.
    */
   private _handleMqttMessage(topic: string, payload: string): void {
+    //console.log(`[MQTT Receiver] Received raw message on topic "${topic}": "${payload}"`);
+
     if (topic === '$SYS/Coreflux/Command/Output') {
+      console.log(`[MQTT Receiver] Topic matched $SYS/Coreflux/Command/Output. Calling handlers...`);
+      this._handleSysCommandOutput(payload);
       this._handleCommandOutput(payload);
       return;
     }
 
-    // store topic & payload
+    // Handle non-command-output messages (e.g., live data for cells)
     this._payloadMap.set(topic, payload);
     this._topicProvider.addTopic(topic);
 
-    console.log(`Received MQTT message on topic "${topic}": ${payload}`);
-
-    // Now see if any cell wants it
     for (const [uri, st] of this._cellStates.entries()) {
       if (st.step === 'live') {
         if (this._topicMatchesAny(topic, st.subscribedTopics)) {
           this._insertTopic(st.liveTree, topic.split('/'), payload);
-          // Instead of _renderHtmlTree, we produce JSON for our custom renderer:
           this._renderTreeInCell(st);
         }
       }
     }
+  }
+
+  /**
+   * Handles output from the $SYS/Coreflux/Command/Output topic,
+   * specifically looking for successful removeAll command responses.
+   */
+  private _handleSysCommandOutput(payload: string): void {
+    const lowerPayload = payload.toLowerCase();
+    let categoryToClear: 'Models' | 'Actions' | 'Routes' | 'Rules' | null = null;
+
+    // Define patterns for successful removal
+    // Adjust these patterns based on the *exact* success messages from the broker
+    const patterns = {
+      Models: /removed all models successfully/i,
+      Actions: /removed all actions successfully/i,
+      Routes: /removed all routes successfully/i,
+      Rules: /removed all rules successfully/i // Add Rules if applicable
+    };
+
+    if (patterns.Models.test(lowerPayload)) {
+      categoryToClear = 'Models';
+    } else if (patterns.Actions.test(lowerPayload)) {
+      categoryToClear = 'Actions';
+    } else if (patterns.Routes.test(lowerPayload)) {
+      categoryToClear = 'Routes';
+    } else if (patterns.Rules.test(lowerPayload)) {
+      categoryToClear = 'Rules';
+    }
+
+    if (categoryToClear) {
+      console.log(`Detected successful removal of all ${categoryToClear}. Clearing provider category.`);
+      this._entitiesProvider.clearCategory(categoryToClear);
+    }
+    // Ignore other command outputs here
   }
 
   private _topicMatchesAny(topic: string, patterns: string[]): boolean {
@@ -458,16 +763,13 @@ export default class LOTController {
         const patternLevel = patternLevels[i];
 
         if (patternLevel === '#') {
-          // multi-level wildcard => everything from here is matched
           break;
         } else if (patternLevel === '+') {
-          // single-level wildcard => match exactly one level
           if (topicLevels[i] === undefined) {
             isMatch = false;
             break;
           }
         } else {
-          // exact match required
           if (patternLevel !== topicLevels[i]) {
             isMatch = false;
             break;
@@ -475,7 +777,6 @@ export default class LOTController {
         }
       }
 
-      // If pattern is shorter or longer than actual levels, handle that
       if (isMatch && topicLevels.length !== patternLevels.length) {
         if (patternLevels[patternLevels.length - 1] !== '#') {
           isMatch = false;
@@ -496,7 +797,7 @@ export default class LOTController {
       tree[head] = {};
     }
     if (rest.length === 0) {
-      tree[head]._value = payload; // store payload at final level
+      tree[head]._value = payload;
     } else {
       this._insertTopic(tree[head], rest, payload);
     }
@@ -505,7 +806,7 @@ export default class LOTController {
   /**
    * Builds the remove command for a given entity type.
    */
-  private _buildRemoveCommand(type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE' | 'VISU', name: string): string {
+  private _buildRemoveCommand(type: EntityTypeString, name: string): string {
     switch (type) {
     case 'MODEL': return `-removeModel ${name}`;
     case 'ACTION': return `-removeAction ${name}`;
@@ -518,26 +819,34 @@ export default class LOTController {
   /**
    * Builds the add command from the cell's code.
    */
-  private _buildAddCommand(type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE' | 'VISU', code: string): string {
+  private _buildAddCommand(type: EntityTypeString, code: string): string {
     switch (type) {
     case 'MODEL': return `-addModel ${code}`;
     case 'ACTION': return `-addAction ${code}`;
     case 'RULE': return `-addRule ${code}`;
     case 'ROUTE': return `-addRoute ${code}`;
-    case 'VISU': return `-addRoute ${code}`;
+    case 'VISU': return `-addVisu ${code}`;
     }
   }
 
   /**
    * Parse code for "DEFINE MODEL <name>" or "DEFINE ACTION <name>" or "DEFINE RULE <name>".
+   * Returns the specific EntityTypeString union.
    */
-  private _parseEntityTypeAndName(code: string): { type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE' | 'VISU'; name: string } | null {
-    const re = /\bDEFINE\s+(MODEL|ACTION|RULE|ROUTE)\s+"?([A-Za-z0-9_]+)"?/i;
+  private _parseEntityTypeAndName(code: string): { type: EntityTypeString; name: string } | null {
+    const re = /\bDEFINE\s+(MODEL|ACTION|RULE|ROUTE|VISU)\s+"?([A-Za-z0-9_\-\/]+)"?/i;
     const match = code.match(re);
     if (!match) return null;
-    const entityType = match[1].toUpperCase() as 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE' | 'VISU';
+
+    const entityTypeStr = match[1].toUpperCase();
     const entityName = match[2];
-    return { type: entityType, name: entityName };
+
+    if (['MODEL', 'ACTION', 'RULE', 'ROUTE', 'VISU'].includes(entityTypeStr)) {
+      return { type: entityTypeStr as EntityTypeString, name: entityName };
+    } else {
+      console.warn(`Parsed unknown entity type: ${entityTypeStr}`);
+      return null;
+    }
   }
 
   private _parseInputTopics(type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE' | 'VISU' , code: string): string[] {
@@ -548,7 +857,7 @@ export default class LOTController {
 
     while ((match = withTopicRegex.exec(code)) !== null) {
       let t = match[1];
-      if (!t.endsWith('#')) t += '/#'; // add wildcard for sub-levels
+      if (!t.endsWith('#')) t += '/#';
       topics.push(t);
     }
 
@@ -573,5 +882,140 @@ export default class LOTController {
       topics.push(match[1]);
     }
     return Array.from(new Set(topics));
+  }
+
+  /**
+   * Disconnects the current MQTT client, clears cell states, and reconnects.
+   * Called when credentials change.
+   */
+  public async disconnectAndReconnect(): Promise<boolean> {
+    console.log('Disconnecting MQTT due to credential change...');
+    await this._disconnectMqtt();
+    this._clearAllCellStates();
+    console.log('Reconnecting MQTT with new credentials...');
+    try {
+      const success = await this._connectMqtt();
+      if (!success) {
+        vscode.window.showErrorMessage('Failed to reconnect MQTT with new credentials.');
+      }
+      return success;
+    } catch (error) {
+      console.error('Error during reconnect:', error);
+      vscode.window.showErrorMessage(`Failed to reconnect MQTT: ${error}`);
+      this.emit('disconnected');
+      return false;
+    }
+  }
+
+  /**
+   * Disconnects the MQTT client if connected.
+   */
+  private async _disconnectMqtt(): Promise<void> {
+    if (this._client) {
+      console.log('Disconnecting MQTT client...');
+      const client = this._client;
+      this._client = undefined;
+      this._connected = false;
+      this.currentBrokerUrl = null;
+      client.removeAllListeners();
+
+      await new Promise<void>(resolve => {
+        client.end(false, {}, () => {
+          console.log('MQTT client.end() callback received.');
+          resolve();
+        });
+        setTimeout(() => {
+          console.warn('MQTT client.end() timeout, resolving disconnect anyway.');
+          resolve();
+        }, 2000);
+      });
+      this.emit('disconnected');
+    } else {
+      if (this._connected) {
+        this._connected = false;
+        this.currentBrokerUrl = null;
+        this.emit('disconnected');
+      }
+    }
+  }
+
+  /**
+   * Clears the state and stops execution for all active cells.
+   */
+  private _clearAllCellStates(): void {
+    console.log(`Clearing states for ${this._cellStates.size} cells.`);
+    for (const [uri, cellState] of this._cellStates.entries()) {
+      if (cellState.execution && (cellState.step !== 'done' && cellState.step !== 'failed')) {
+        try {
+          console.log(`Ending execution for cell ${uri}`);
+          cellState.execution.end(false, Date.now());
+        } catch (e) {
+          console.warn(`Error ending execution for cell ${uri}: ${e}`);
+        }
+      }
+      if (cellState.subscribedTopics && cellState.subscribedTopics.length > 0) {
+        console.log(`Unsubscribing topics for cell ${uri}: ${cellState.subscribedTopics.join(', ')}`);
+        this._unsubscribeFromTopics(cellState.subscribedTopics);
+      }
+    }
+    this._cellStates.clear();
+    console.log('All cell states cleared.');
+  }
+
+  /**
+   * Returns the current MQTT client instance, if connected.
+   */
+  public getMqttClient(): mqtt.MqttClient | undefined {
+    return this._client;
+  }
+
+  /**
+   * Publishes a command to the system command topic.
+   * Checks for connection first.
+   * @param command The command string (e.g., "-removeAllModels")
+   * @returns True if published, false otherwise.
+   */
+  public publishSysCommand(command: string): boolean {
+    if (!this._client || !this._connected) {
+      vscode.window.showErrorMessage('MQTT client not connected. Cannot publish command.');
+      return false;
+    }
+    const topic = '$SYS/Coreflux/Command';
+    console.log(`Publishing to ${topic}: ${command}`);
+    this._client.publish(topic, command, { qos: 1 }, (err) => {
+      if (err) {
+        console.error(`Failed to publish command '${command}':`, err);
+        vscode.window.showErrorMessage(`Failed to publish command '${command}': ${err.message}`);
+      }
+    });
+    return true;
+  }
+
+  /**
+   * Publishes a command to remove a specific entity.
+   * @param entityType Type of the entity (Model, Action, etc.)
+   * @param entityName Name of the entity.
+   * @returns True if the publish command was attempted, false if not connected.
+   */
+  public publishRemoveEntityCommand(entityType: 'Model' | 'Action' | 'Rule' | 'Route', entityName: string): boolean {
+    // Construct the command payload, e.g., "-removeModel MyModel"
+    const commandPayload = `-remove${entityType} ${entityName}`;
+    return this.publishSysCommand(commandPayload);
+  }
+
+  /**
+   * Publishes a command to add or update an entity with its code.
+   * @param entityType Type of the entity (Model, Action, etc.)
+   * @param entityName Name of the entity.
+   * @param code The code content for the entity.
+   * @returns True if the publish command was attempted, false if not connected.
+   */
+  public publishUpdateEntityCommand(entityType: 'Model' | 'Action' | 'Rule' | 'Route', entityName: string, code: string): boolean {
+    // Construct the command payload, e.g., "-addModel MyModel {\n code... \n}"
+    // Note: Coreflux might expect the code directly after the name, or wrapped somehow.
+    // Assuming simple concatenation for now. Adjust if Coreflux requires specific wrapping (like {}).
+    const commandPayload = `-add${entityType} ${entityName} ${code}`;
+    // Consider potential payload size limits if code is very large
+    return this.publishSysCommand(commandPayload);
   }
 }

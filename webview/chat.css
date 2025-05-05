@@ -1,0 +1,221 @@
+/* Styles for Anselmo Chat Webview */
+body {
+  font-family: var(--vscode-font-family, sans-serif);
+  color: var(--vscode-foreground); 
+  background-color: var(--vscode-sideBar-background, var(--vscode-panel-background, #252526)); 
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  box-sizing: border-box;
+  margin: 0; /* Remove default body margin */
+}
+
+h1 {
+  color: var(--vscode-sideBar-foreground, var(--vscode-panelTitle-activeForeground));
+  border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-sideBar-border));
+  padding-bottom: 5px;
+  margin-top: 0;
+}
+
+#chat-messages {
+  flex-grow: 1; 
+  overflow-y: auto; 
+  border: 1px solid var(--vscode-panel-border, var(--vscode-sideBar-border, #ccc));
+  margin-bottom: 10px;
+  padding: 8px;
+  background-color: var(--vscode-editor-background); 
+}
+
+#input-area {
+  display: flex;
+  gap: 5px;
+}
+
+#message-input {
+  flex-grow: 1;
+  background-color: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, #ccc);
+  padding: 5px 8px;
+}
+
+#message-input::placeholder {
+  color: var(--vscode-input-placeholderForeground);
+}
+
+#send-button {
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: 1px solid var(--vscode-button-border, transparent);
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+#send-button:hover {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+/* Message styling */
+.message-container {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-radius: 4px;
+  white-space: pre-wrap; 
+  word-wrap: break-word; 
+  position: relative; /* Needed for copy button positioning */
+}
+
+.message-container.user-message {
+  background-color: var(--vscode-list-activeSelectionBackground, #094771);
+  color: var(--vscode-list-activeSelectionForeground, white);
+  text-align: right;
+  margin-left: 20%;
+}
+
+.message-container.assistant-message {
+  background-color: transparent; /* Make background transparent */
+  color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground));
+  text-align: left;
+  margin-right: 20%;
+}
+
+/* --- Markdown Element Styling (Inside Assistant Messages) --- */
+.message-container.assistant-message > *:first-child {
+  margin-top: 0; /* Remove margin from the very first element */
+}
+
+.message-container.assistant-message > *:last-child {
+  margin-bottom: 0; /* Remove margin from the very last element */
+}
+
+.message-container.assistant-message p {
+  margin-top: 0.5em; /* Reduce paragraph spacing */
+  margin-bottom: 0.5em;
+}
+
+.message-container.assistant-message h1,
+.message-container.assistant-message h2,
+.message-container.assistant-message h3,
+.message-container.assistant-message h4,
+.message-container.assistant-message h5,
+.message-container.assistant-message h6 {
+  margin-top: 0.8em; /* Reduce heading spacing */
+  margin-bottom: 0.4em;
+  padding-bottom: 0; /* Remove potential extra padding */
+  border-bottom: none; /* Remove potential extra borders */
+}
+
+.message-container.assistant-message ul,
+.message-container.assistant-message ol {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  padding-left: 2em; /* Adjust list indentation */
+}
+
+.message-container.assistant-message li {
+  margin-bottom: 0.2em; /* Slight space between list items */
+}
+
+.message-container.assistant-message blockquote {
+  margin: 0.5em 0;
+  padding: 0.2em 1em;
+  border-left: 3px solid var(--vscode-panel-border, #ccc);
+  background-color: rgba(128, 128, 128, 0.1); /* Slight background tint */
+}
+/* --- End Markdown Element Styling --- */
+
+/* Code block styling */
+.message-container pre {
+  background-color: var(--vscode-textCodeBlock-background, rgba(0,0,0,0.1));
+  padding: 10px;
+  padding-top: 25px; /* Make space for copy button */
+  border-radius: 3px;
+  overflow-x: auto;
+  position: relative; /* Context for copy button */
+  /* Ensure editor font and color are used */
+  color: var(--vscode-editor-foreground);
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
+/* Style the inner code tag as well */
+.message-container pre > code {
+  color: inherit; /* Inherit color from pre */
+  font-family: inherit; /* Inherit font from pre */
+  background-color: transparent; /* Ensure code tag itself is transparent */
+}
+
+.message-container code:not(pre > code) {
+  background-color: var(--vscode-textCodeBlock-background, rgba(0,0,0,0.1));
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+}
+
+/* Copy Button Styling */
+.copy-button {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background-color: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, white);
+  border: 1px solid var(--vscode-button-border, transparent);
+  padding: 2px 6px;
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 0.8em;
+  opacity: 0; /* Initially hidden */
+  transition: opacity 0.2s;
+}
+
+.message-container pre:hover .copy-button {
+    opacity: 1; /* Show on hover */
+}
+
+.copy-button:hover {
+  background-color: var(--vscode-button-secondaryHoverBackground, #4a4d51);
+}
+
+/* Copy Full Reply Button Styling */
+.copy-reply-button {
+  position: absolute;
+  bottom: 5px;
+  right: 5px;
+  background-color: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, white);
+  border: 1px solid var(--vscode-button-border, transparent);
+  padding: 2px 6px;
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 0.8em;
+  opacity: 0; /* Initially hidden */
+  transition: opacity 0.2s;
+}
+
+.message-container.assistant-message:hover .copy-reply-button {
+    opacity: 0.7; /* Show slightly on hover */
+}
+
+.copy-reply-button:hover {
+  opacity: 1 !important;
+  background-color: var(--vscode-button-secondaryHoverBackground, #4a4d51);
+}
+
+/* Mermaid diagram container */
+.mermaid {
+  /* Ensure diagrams don't overflow horizontally */
+  max-width: 100%; 
+  overflow-x: auto; 
+  padding: 10px 0; /* Add some vertical padding */
+}
+
+/* Basic Syntax Highlighting Styles */
+.lot-keyword {
+  color: var(--vscode-symbolIcon-keywordForeground, #c586c0); /* Example: Use keyword symbol color */
+}
+.lot-string {
+  color: var(--vscode-debugTokenExpression-string, #ce9178); /* Example: Use debug string color */
+}
+.lot-comment {
+  color: var(--vscode-editorCommentsWidget-resolvedBorder, #6a9955); /* Example: Use comment widget border color */
+  font-style: italic;
+} 
