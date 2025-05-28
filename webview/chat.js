@@ -35,11 +35,45 @@ if (typeof acquireVsCodeApi === 'function') {
     const sendButton = document.getElementById('send-button');
     const messageInput = document.getElementById('message-input');
     const messagesDiv = document.getElementById('chat-messages');
-    const associatedDocElement = document.getElementById('associated-document'); // NEW: Get reference
+    const associatedDocElement = document.getElementById('associated-document');
+    const modeSelect = document.getElementById('interaction-mode-select');
+    const documentContextBanner = document.getElementById('document-context-banner');
+    const currentDocumentNameSpan = document.getElementById('current-document-name');
+    let currentInteractionMode = 'ask';
 
-    if (!sendButton || !messageInput || !messagesDiv) {
-      console.error("Chat UI elements not found!");
+    if (!sendButton || !messageInput || !messagesDiv || !modeSelect || !documentContextBanner || !currentDocumentNameSpan) {
+      console.error("Chat UI elements (sendButton, messageInput, messagesDiv, modeSelect, documentContextBanner, or currentDocumentNameSpan) not found!");
       return;
+    }
+
+    // --- NEW: Event Listener for Mode Select Dropdown ---
+    if (modeSelect) {
+      modeSelect.addEventListener('change', (event) => {
+        currentInteractionMode = event.target.value;
+        console.log('Interaction mode changed to:', currentInteractionMode);
+        updateInputPlaceholder(); // Update placeholder based on new mode
+      });
+    }
+
+    // --- NEW: Function to auto-resize textarea ---
+    function autoResizeTextarea(textarea) {
+      if (!textarea) return;
+      textarea.style.height = 'auto'; 
+      textarea.style.height = textarea.scrollHeight + 'px';
+    }
+
+    // --- NEW: Function to update message input placeholder ---
+    function updateInputPlaceholder() {
+      if (!messageInput || !modeSelect) return;
+      const docName = currentDocumentNameSpan ? currentDocumentNameSpan.textContent : null;
+
+      if (currentInteractionMode === 'ask' && docName && docName !== '(No document context)') {
+        messageInput.placeholder = `Ask about ${docName}... (Shift+Enter for new line)`;
+      } else if (currentInteractionMode === 'help') {
+        messageInput.placeholder = 'Ask a general question... (Shift+Enter for new line)';
+      } else { // Covers 'edit' or any other default
+        messageInput.placeholder = 'Type your message... (Shift+Enter for new line)';
+      }
     }
 
     // --- Function to add a message to the chat display --- 
@@ -233,21 +267,25 @@ if (typeof acquireVsCodeApi === 'function') {
         vscode.postMessage({
           command: 'sendMessage', 
           text: message.trim(),
-          colors: themeColors // Add colors to the payload
+          colors: themeColors,
+          mode: currentInteractionMode
         });
         messageInput.value = '';
+        autoResizeTextarea(messageInput);
+        messageInput.focus();
       }
     }
 
     sendButton.addEventListener('click', sendMessage);
 
-    messageInput.addEventListener('keypress', (event) => {
-      if (event.key === 'Enter' && !event.shiftKey) { // Send on Enter, allow Shift+Enter for newline
+    messageInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault(); 
         sendMessage(); 
       }
+      autoResizeTextarea(messageInput);
     });
-
+    autoResizeTextarea(messageInput);
 
     window.addEventListener('message', event => {
       const message = event.data; 
@@ -270,12 +308,24 @@ if (typeof acquireVsCodeApi === 'function') {
         // Add more cases later (e.g., show thinking indicator)
       case 'setDocumentContext':
         updateAssociatedDocument(message.filename);
-        // Also save state when context changes
+        if (documentContextBanner && currentDocumentNameSpan) {
+          if (message.filename) {
+            currentDocumentNameSpan.textContent = message.filename;
+            documentContextBanner.style.display = 'block';
+          } else {
+            documentContextBanner.style.display = 'none';
+          }
+        }
+        updateInputPlaceholder();
         vscode.setState({ ...vscode.getState(), associatedFilename: message.filename });
         break;
       case 'clearDocumentContext':
         updateAssociatedDocument(null);
-        // Also save state when context changes
+        if (documentContextBanner && currentDocumentNameSpan) {
+          currentDocumentNameSpan.textContent = '';
+          documentContextBanner.style.display = 'none';
+        }
+        updateInputPlaceholder();
         vscode.setState({ ...vscode.getState(), associatedFilename: null });
         break;
       }
@@ -304,18 +354,39 @@ if (typeof acquireVsCodeApi === 'function') {
           associatedDocElement.title = 'Chat opened without a specific document context.';
         }
       }
+      if (currentDocumentNameSpan && documentContextBanner) { 
+        if (filename) {
+          currentDocumentNameSpan.textContent = filename;
+          documentContextBanner.style.display = 'block';
+        } else {
+          currentDocumentNameSpan.textContent = '';
+          documentContextBanner.style.display = 'none';
+        }
+      }
+      updateInputPlaceholder();
     }
 
     // Initialize Mermaid and signal readiness
     function initializeChat() {
       console.log("Initializing Chat UI...");
-      mermaid.initialize({ startOnLoad: false });
-      // NEW: Signal webview is ready
+      // mermaid.initialize({ startOnLoad: false }); // Mermaid is already initialized earlier in your DOMContentLoaded
+
+      // ---> NEW: Initialize mode, placeholder, and textarea size <---
+      if (modeSelect) {
+        currentInteractionMode = modeSelect.value; // Set initial mode from dropdown
+      }
+      updateInputPlaceholder(); // Set initial placeholder based on mode and any restored context
+      if (messageInput) { // messageInput is now a textarea
+        autoResizeTextarea(messageInput); // Initial resize
+      }
+      // --- END NEW INITIALIZATION ---
+      
+      // NEW: Signal webview is ready (Keep your existing postMessage)
       vscode.postMessage({ command: 'webviewReady' });
       console.log("Chat UI Initialized. Posted webviewReady.");
     }
 
-    // Run initialization when the script loads
+    // Run initialization when the script loads (Keep your existing call)
     initializeChat();
   });
 } else {

@@ -27,32 +27,78 @@ h1 {
   background-color: var(--vscode-editor-background); 
 }
 
-#input-area {
+/* UPDATED for new structure */
+.chat-input-area {
   display: flex;
-  gap: 5px;
+  padding: 10px;
+  border-top: 1px solid var(--vscode-editorGroup-border);
+  /* background-color: var(--vscode-sideBar-background); */ /* Use editor background for consistency */
+  background-color: var(--vscode-editor-background);
+  align-items: flex-start; /* Align items to the top if textarea grows */
 }
 
-#message-input {
+.input-controls {
+  display: flex;
+  flex-grow: 1;
+  gap: 5px; /* Reduced gap */
+  align-items: center; 
+}
+
+.interaction-mode-select {
+  padding: 4px 6px; /* Reduced padding */
+  border: 1px solid var(--vscode-input-border, #ccc);
+  border-radius: 3px; /* Slightly smaller radius */
+  background-color: var(--vscode-input-background, #fff);
+  color: var(--vscode-input-foreground, #000);
+  height: 30px; /* Reduced height */
+  font-size: 0.85em; /* Reduced font size */
+  box-sizing: border-box;
+  flex-shrink: 0; 
+  width: auto; 
+  min-width: 70px; /* Adjusted min-width */
+}
+
+.interaction-mode-select:disabled {
+  opacity: 0.6;
+  /* Ensure disabled state also respects new height if needed, though often inherited */
+}
+
+/* UPDATED #message-input to be .message-input (textarea) */
+.message-input {
   flex-grow: 1;
   background-color: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
   border: 1px solid var(--vscode-input-border, #ccc);
-  padding: 5px 8px;
+  padding: 6px 8px; /* Reduced padding */
+  font-family: inherit;
+  font-size: 0.9em; /* Reduced font size */
+  resize: none; 
+  line-height: 1.3; /* Adjusted line height for smaller text */
+  min-height: 30px; /* Reduced min-height */
+  border-radius: 3px; /* Slightly smaller radius */
+  box-sizing: border-box;
+  width: 100%; 
 }
 
-#message-input::placeholder {
+.message-input::placeholder {
   color: var(--vscode-input-placeholderForeground);
 }
 
-#send-button {
+/* UPDATED #send-button to be .send-button */
+.send-button {
   background-color: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
   border: 1px solid var(--vscode-button-border, transparent);
-  padding: 5px 10px;
+  padding: 0 10px; /* Reduced padding */
   cursor: pointer;
+  margin-left: 5px; /* Reduced margin */
+  height: 30px; /* Reduced height */
+  border-radius: 3px; /* Slightly smaller radius */
+  font-size: 0.9em; /* Reduced font size */
+  box-sizing: border-box;
 }
 
-#send-button:hover {
+.send-button:hover {
   background-color: var(--vscode-button-hoverBackground);
 }
 
@@ -64,6 +110,8 @@ h1 {
   white-space: pre-wrap; 
   word-wrap: break-word; 
   position: relative; /* Needed for copy button positioning */
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .message-container.user-message {
@@ -218,4 +266,55 @@ h1 {
 .lot-comment {
   color: var(--vscode-editorCommentsWidget-resolvedBorder, #6a9955); /* Example: Use comment widget border color */
   font-style: italic;
+}
+
+/* Container for the whole chat UI, if you wrapped it */
+.container {
+    display: flex;
+    flex-direction: column;
+    height: 100%; /* Fill body */
+}
+
+/* Document context banner */
+.document-context-banner {
+    padding: 5px 10px;
+    background-color: var(--vscode-statusBar-background);
+    color: var(--vscode-statusBar-foreground);
+    font-size: 0.9em;
+    text-align: center;
+    border-bottom: 1px solid var(--vscode-editorGroup-border);
+}
+
+/* Styling for LOT command blocks */
+.lot-command-block {
+    background-color: var(--vscode-textBlockQuote-background, #f0f0f0);
+    border: 1px solid var(--vscode-textBlockQuote-border, #e0e0e0);
+    border-radius: 4px;
+    margin: 10px 0;
+    padding: 0; /* Remove padding from the block itself */
+    overflow: hidden; /* Ensures border-radius clips content */
+}
+
+.lot-command-header {
+    font-weight: bold;
+    padding: 8px 12px;
+    background-color: var(--vscode-peekViewTitle-background, #e0e0e0); /* Slightly different background for header */
+    color: var(--vscode-peekViewTitleLabel-foreground, #333);
+    border-bottom: 1px solid var(--vscode-textBlockQuote-border, #e0e0e0);
+}
+
+.lot-command-block pre {
+    margin: 0; /* Reset margin for pre inside the block */
+    padding: 10px 12px; /* Padding for the code content */
+    white-space: pre-wrap; /* Allow wrapping */
+    word-wrap: break-word; /* Break long words */
+    background-color: var(--vscode-textCodeBlock-background, #f8f8f8); /* Code background */
+}
+
+.lot-command-block pre code {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 0.9em;
+    color: var(--vscode-editor-foreground); /* Use editor foreground for code */
+    background: none; /* Remove background from inline code style if applied */
+    padding: 0; /* Reset padding */
 } 

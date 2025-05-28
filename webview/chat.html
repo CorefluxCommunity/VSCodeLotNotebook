@@ -13,18 +13,26 @@
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.0/dist/mermaid.min.js"></script>
 </head>
 <body>
-    <header>
-        <h1>Anselmo Chat</h1>
-        <p id="associated-document" class="associated-doc-text">(No document context)</p>
-    </header>
-    <div id="chat-messages">
-      <!-- Messages will be added here by JS -->
-      <div class="message-container assistant-message"><i>Welcome! Ask Anselmo anything about Language Of Things (LOT).</i></div>
-    </div>
-    
-    <div id="input-area"> 
-      <input type="text" id="message-input" placeholder="Type your message...">
-      <button id="send-button">Send</button>
+    <div class="container">
+        <div id="document-context-banner" class="document-context-banner" style="display: none;">
+            Interacting with: <span id="current-document-name"></span>
+        </div>
+        <div id="chat-messages" class="chat-messages">
+          <!-- Messages will be added here by JS -->
+          <div class="message-container assistant-message"><i>Welcome! Ask Anselmo anything about Language Of Things (LOT).</i></div>
+        </div>
+        
+        <div class="chat-input-area">
+            <div class="input-controls">
+                <select id="interaction-mode-select" class="interaction-mode-select">
+                    <option value="ask" selected>Ask</option>
+                    <option value="help">Help</option>
+                    <option value="edit">Edit (Cells)</option>
+                </select>
+                <textarea id="message-input" class="message-input" rows="1" placeholder="Type your message... (Shift+Enter for new line)"></textarea>
+            </div>
+            <button id="send-button" class="send-button">Send</button>
+        </div>
     </div>
 
     <!-- Link to JS will be injected here -->

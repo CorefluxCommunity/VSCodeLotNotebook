@@ -320,63 +320,60 @@ export function activate(context: vscode.ExtensionContext) {
     let initialQuery: string | undefined = undefined;
     let panelTitle = 'Anselmo ChatBot (beta preview)'; // Default title
     let currentNotebookUri: vscode.Uri | undefined = undefined;
+    // ---> NEW: Define default interaction mode for initial opening
+    const initialInteractionMode = 'ask'; 
 
     if (activeEditor && activeEditor.notebook.notebookType === 'lot-notebook') {
       const notebook = activeEditor.notebook;
       currentNotebookUri = notebook.uri;
       const filename = path.basename(notebook.uri.fsPath);
-      panelTitle = `Anselmo: ${filename}`; // Dynamic title
-      console.log(`[openChatbot] Active LOT notebook found: ${filename}`);
+      panelTitle = `Anselmo: ${filename}`;
+      console.log(`[openChatbot] Active LOT notebook found: ${filename}. Initial mode: ${initialInteractionMode}`);
 
-      // Prepare context (similar to sendMessage, without theme colors initially)
+      // Prepare context based on initial mode (e.g., 'ask')
       const cellContents: string[] = [];
-      const placeholderInstructions = `The user is interacting with the following LOT notebook content. Each cell is marked with a placeholder like <!-- CELL_INDEX_N -->. When referring to or suggesting modifications for specific cells, please use these exact placeholders in your response. IMPORTANT: To suggest replacing the entire content of a cell, provide the placeholder on its own line, followed by the complete new content for that cell, like this:\n<!-- CELL_INDEX_N -->\n[new full content for cell N]`;
+      // --- NEW: Different initial prompt for 'ask' mode ---
+      const askModeInstructions = `The user is interacting with the following LOT notebook content. Please use this content to formulate your answer. Do not refer to or use cell placeholders.`;
       
-      notebook.getCells().forEach((cell, index) => {
-        const placeholder = `<!-- CELL_INDEX_${index} -->\n`;
+      notebook.getCells().forEach((cell) => {
         const languageId = cell.document.languageId || 'plaintext';
         const cellContent = cell.document.getText();
-        cellContents.push(`${placeholder}[language=${languageId}]\n${cellContent}`);
+        // For 'ask' mode, just concatenate content, perhaps with language hint if useful
+        cellContents.push(`[language=${languageId}]\n${cellContent}`); 
       });
-      const notebookContentWithPlaceholders = cellContents.join('\n---\n');
+      const rawNotebookContent = cellContents.join('\n---\n');
 
-      initialNotebookContext = `vscode-webview context\n${placeholderInstructions}`;
-      initialNotebookContext += `\n\n--- NOTEBOOK CONTENT START ---\n${notebookContentWithPlaceholders}\n--- NOTEBOOK CONTENT END ---`;
-      initialQuery = "User opened chat panel for the provided notebook context. Provide a brief greeting or initial analysis.";
-      console.log('[openChatbot] Prepared initial context and query.');
+      initialNotebookContext = `vscode-webview context\n${askModeInstructions}`;
+      initialNotebookContext += `\n\n--- NOTEBOOK CONTENT START ---\n${rawNotebookContent}\n--- NOTEBOOK CONTENT END ---`;
+      initialQuery = "User opened chat panel for the provided notebook context. Provide a brief greeting or initial analysis based on the full content.";
+      console.log('[openChatbot] Prepared initial context and query for mode:', initialInteractionMode);
     } else {
       console.log('[openChatbot] No active LOT notebook editor found.');
-      currentNotebookUri = undefined; // Ensure no stale URI
+      currentNotebookUri = undefined;
     }
-    // --- END NEW --- 
 
-    // If we already have a panel, show it and potentially update its association.
     if (anselmoPanel) {
       console.log('[openChatbot] Panel exists. Revealing and updating.');
-      anselmoPanel.title = panelTitle; // Update title
-      associatedNotebookUri = currentNotebookUri; // Update associated URI
+      anselmoPanel.title = panelTitle;
+      associatedNotebookUri = currentNotebookUri;
       anselmoPanel.reveal(columnToShowIn);
-      // --- Send update message and potentially initial context to existing panel --- 
+
       if (currentNotebookUri) {
         anselmoPanel.webview.postMessage({ command: 'setDocumentContext', filename: path.basename(currentNotebookUri.fsPath) });
         if (initialQuery && initialNotebookContext) {
-          // Post thinking message
-          anselmoPanel.webview.postMessage({ command: 'addMessage', text: 'Analyzing document... ⏳', sender: 'assistant' });
-          // Make initial API call for the *newly* associated document
-          callAnselmoApi(initialQuery, initialNotebookContext, anselmoPanel); // Use helper function (to be created)
+          anselmoPanel.webview.postMessage({ command: 'addMessage', text: 'Analyzing document (Ask mode)... ⏳', sender: 'assistant' });
+          // Make initial API call using the new 'ask' mode context
+          callAnselmoApi(initialQuery, initialNotebookContext, anselmoPanel);
         }
       } else {
-        // If no notebook is active now, inform the webview to clear context?
         anselmoPanel.webview.postMessage({ command: 'clearDocumentContext' }); 
       }
-      // --- End update logic --- 
       return; 
     }
 
-    // Otherwise, create a new panel.
     console.log('[openChatbot] Creating new panel.');
-    anselmoSessionId = undefined; // Reset session for new panel
-    associatedNotebookUri = currentNotebookUri; // Set associated URI for new panel
+    anselmoSessionId = undefined;
+    associatedNotebookUri = currentNotebookUri;
     anselmoPanel = vscode.window.createWebviewPanel(
       'anselmoChat',
       panelTitle, // Use dynamic or default title
@@ -407,68 +404,118 @@ export function activate(context: vscode.ExtensionContext) {
           console.log('[Webview->Ext] Webview is ready.');
           // Now make the initial API call if context was prepared
           if (initialQuery && initialNotebookContext && associatedNotebookUri) {
-            // Post thinking message
-            anselmoPanel.webview.postMessage({ command: 'addMessage', text: 'Analyzing document... ⏳', sender: 'assistant' });
-            // Make initial API call 
-            callAnselmoApi(initialQuery, initialNotebookContext, anselmoPanel); // Use helper function
+            anselmoPanel.webview.postMessage({ command: 'addMessage', text: 'Analyzing document (Ask mode)... ⏳', sender: 'assistant' });
+            callAnselmoApi(initialQuery, initialNotebookContext, anselmoPanel);
           }
           return;
         case 'alert': 
           vscode.window.showErrorMessage(message.text);
           return;
         case 'sendMessage':
-          // --- Context logic is now slightly different for subsequent messages ---
+          // --- NEW: Expect 'mode' from webview message ---
           const userQuery = message.text;
-          const themeColors = message.colors;
-          console.log(`[Webview->Ext] Received sendMessage: ${userQuery}` + (themeColors ? ` with colors: ${JSON.stringify(themeColors)}` : ''));
+          const themeColors = message.colors; // This was removed by your edit, will respect that.
+          const interactionMode = message.mode || 'help'; // Default to 'help' if mode not provided
 
-          let notebookContentWithPlaceholders = '';
-          let placeholderInstructions = '';
+          console.log(`[Webview->Ext] Received sendMessage. Mode: ${interactionMode}, Query: ${userQuery}`);
+
           let sendMessageContext = '';
 
-          // Get context FROM THE CURRENTLY ASSOCIATED NOTEBOOK URI, if available
-          if (associatedNotebookUri) { 
-            try {
-              const notebookDoc = await vscode.workspace.openNotebookDocument(associatedNotebookUri);
-              if (notebookDoc.notebookType === 'lot-notebook') {
-                console.log(`[sendMessage] Using associated notebook: ${associatedNotebookUri.fsPath}`);
-                const cellContents: string[] = [];
-                placeholderInstructions = `The user is interacting with the following LOT notebook content. Each cell is marked with a placeholder like <!-- CELL_INDEX_N -->. When referring to or suggesting modifications for specific cells, please use these exact placeholders in your response. IMPORTANT: To suggest replacing the entire content of a cell, provide the placeholder on its own line, followed by the complete new content for that cell, like this:\n<!-- CELL_INDEX_N -->\n[new full content for cell N]`;
-                notebookDoc.getCells().forEach((cell, index) => {
-                  const placeholder = `<!-- CELL_INDEX_${index} -->\\n`;
-                  const languageId = cell.document.languageId || 'plaintext';
-                  const cellContent = cell.document.getText();
-                  cellContents.push(`${placeholder}[language=${languageId}]\\n${cellContent}`);
-                });
-                notebookContentWithPlaceholders = cellContents.join('\\n---\\n');
-                      
-                sendMessageContext = `vscode-webview context\\n${placeholderInstructions}`;
-                if (themeColors) {
-                  sendMessageContext += `\\nTheme Colors:\\nBackground: ${themeColors.background}\\nForeground: ${themeColors.foreground}\\nAccent: ${themeColors.accent}\\nBorder: ${themeColors.border}`;
+          // --- NEW: Switch logic based on interactionMode ---
+          switch (interactionMode) {
+          case 'ask':
+            if (associatedNotebookUri) {
+              try {
+                const notebookDoc = await vscode.workspace.openNotebookDocument(associatedNotebookUri);
+                if (notebookDoc.notebookType === 'lot-notebook') {
+                  console.log(`[sendMessage - Ask Mode] Using associated notebook: ${associatedNotebookUri.fsPath}`);
+                  const cellContents: string[] = [];
+                  const askModeSystemPrompt = `The user is asking a question about the following LOT notebook content. Please use this content to formulate your answer. Do not refer to or use cell placeholders.`;
+                    
+                  notebookDoc.getCells().forEach((cell) => {
+                    const languageId = cell.document.languageId || 'plaintext';
+                    const cellContent = cell.document.getText();
+                    cellContents.push(`[language=${languageId}]\n${cellContent}`);
+                  });
+                  const rawNotebookContent = cellContents.join('\n---\n');
+                          
+                  sendMessageContext = `vscode-webview context\n${askModeSystemPrompt}`;
+                  sendMessageContext += `\n\n--- NOTEBOOK CONTENT START ---\n${rawNotebookContent}\n--- NOTEBOOK CONTENT END ---`;
+                } else {
+                  console.warn(`[sendMessage - Ask Mode] Associated URI ${associatedNotebookUri.fsPath} is not a LOT notebook.`);
+                  // sendMessageContext = "Associated document context not available (not a LOT notebook). Please ensure a LOT notebook is active for 'Ask' mode.";
+                  anselmoPanel?.webview.postMessage({ command: 'addMessage', text: "⚠️ To use 'Ask' mode, please ensure a LOT notebook is associated with the chat.", sender: 'assistant' });
+                  return; 
                 }
-                sendMessageContext += `\\n\\n--- NOTEBOOK CONTENT START ---\\n${notebookContentWithPlaceholders}\\n--- NOTEBOOK CONTENT END ---`;
-
-              } else {
-                console.warn(`[sendMessage] Associated URI ${associatedNotebookUri.fsPath} is not a LOT notebook?`);
-                sendMessageContext = "Associated document context not available (not a LOT notebook).";
+              } catch (error) {
+                console.error(`[sendMessage - Ask Mode] Error opening associated notebook ${associatedNotebookUri.fsPath}:`, error);
+                // sendMessageContext = "Error retrieving associated document context.";
+                associatedNotebookUri = undefined; 
+                anselmoPanel?.webview.postMessage({ command: 'clearDocumentContext' }); 
+                anselmoPanel?.webview.postMessage({ command: 'addMessage', text: "⚠️ Error accessing the notebook for 'Ask' mode.", sender: 'assistant' });
+                return;
               }
-            } catch (error) {
-              console.error(`[sendMessage] Error opening associated notebook ${associatedNotebookUri.fsPath}:`, error);
-              sendMessageContext = "Error retrieving associated document context.";
-              associatedNotebookUri = undefined; // Invalidate URI if it fails to open
-              anselmoPanel.webview.postMessage({ command: 'clearDocumentContext' }); // Inform webview
+            } else {
+              console.log('[sendMessage - Ask Mode] No associated LOT notebook.');
+              // sendMessageContext = "No associated LOT notebook context available. Please open a LOT notebook to use 'Ask' mode.";
+              anselmoPanel?.webview.postMessage({ command: 'addMessage', text: "⚠️ To use 'Ask' mode, please open and associate a LOT notebook with the chat.", sender: 'assistant' });
+              return; 
             }
-          } else {
-            console.log('[sendMessage] No associated LOT notebook.');
-            sendMessageContext = "No associated LOT notebook context available.";
-            if (themeColors) { // Still include colors if available
-              sendMessageContext += `\\nTheme Colors:\\nBackground: ${themeColors.background}\\nForeground: ${themeColors.foreground}\\nAccent: ${themeColors.accent}\\nBorder: ${themeColors.border}`;
+            break; 
+
+          case 'help':
+            console.log('[sendMessage - Help Mode] Using general help context.');
+            sendMessageContext = "The user is asking for general help or has a question not specific to a document. Please provide a helpful, general response.";
+            break;
+
+          case 'edit': 
+            console.log('[sendMessage - Edit Mode] Activated.');
+            if (associatedNotebookUri) {
+              try {
+                const notebookDoc = await vscode.workspace.openNotebookDocument(associatedNotebookUri);
+                if (notebookDoc.notebookType === 'lot-notebook') {
+                  console.log(`[sendMessage - Edit Mode] Using associated notebook: ${associatedNotebookUri.fsPath}`);
+                  const cellContents: string[] = [];
+                  const placeholderInstructions = `The user is interacting with the following LOT notebook content. Each cell is marked with a placeholder like <!-- CELL_INDEX_N -->. When referring to or suggesting modifications for specific cells, please use these exact placeholders in your response. IMPORTANT: To suggest replacing the entire content of a cell, provide the placeholder on its own line, followed by the complete new content for that cell, like this:\n<!-- CELL_INDEX_N -->\n[new full content for cell N]`;
+                  
+                  notebookDoc.getCells().forEach((cell, index) => {
+                    const placeholder = `<!-- CELL_INDEX_${index} -->\n`;
+                    const languageId = cell.document.languageId || 'plaintext';
+                    const cellContent = cell.document.getText();
+                    cellContents.push(`${placeholder}[language=${languageId}]\n${cellContent}`);
+                  });
+                  const notebookContentWithPlaceholders = cellContents.join('\n---\n');
+                        
+                  sendMessageContext = `vscode-webview context\n${placeholderInstructions}`;
+                  sendMessageContext += `\n\n--- NOTEBOOK CONTENT START ---\n${notebookContentWithPlaceholders}\n--- NOTEBOOK CONTENT END ---`;
+                } else {
+                  console.warn(`[sendMessage - Edit Mode] Associated URI ${associatedNotebookUri.fsPath} is not a LOT notebook.`);
+                  anselmoPanel?.webview.postMessage({ command: 'addMessage', text: "⚠️ To use 'Edit (Cells)' mode, please ensure a LOT notebook is associated with the chat.", sender: 'assistant' });
+                  return; 
+                }
+              } catch (error) {
+                console.error(`[sendMessage - Edit Mode] Error opening associated notebook ${associatedNotebookUri.fsPath}:`, error);
+                associatedNotebookUri = undefined; 
+                anselmoPanel?.webview.postMessage({ command: 'clearDocumentContext' }); 
+                anselmoPanel?.webview.postMessage({ command: 'addMessage', text: "⚠️ Error accessing the notebook for 'Edit (Cells)' mode.", sender: 'assistant' });
+                return;
+              }
+            } else {
+              console.log('[sendMessage - Edit Mode] No associated LOT notebook.');
+              anselmoPanel?.webview.postMessage({ command: 'addMessage', text: "⚠️ To use 'Edit (Cells)' mode, please open and associate a LOT notebook with the chat.", sender: 'assistant' });
+              return; 
             }
-          }
-          console.log('[Ext] Using context for sendMessage API:', sendMessageContext); 
-          // --- End context logic change ---
+            break;
             
-          callAnselmoApi(userQuery, sendMessageContext, anselmoPanel); // Use helper function
+          default:
+            console.warn(`[sendMessage] Unknown interaction mode: ${interactionMode}. Defaulting to help context.`);
+            sendMessageContext = "Unknown interaction mode. Treating as a general help request.";
+            break;
+          }
+          // --- End new context logic ---
+            
+          console.log(`[Ext - ${interactionMode} Mode] Using context for Anselmo API:`, sendMessageContext);
+          callAnselmoApi(userQuery, sendMessageContext, anselmoPanel);
           return;
         case 'applyCellUpdate':
           console.log(`[Webview->Ext] Received applyCellUpdate for index: ${message.cellIndex}`);
@@ -1131,8 +1178,19 @@ async function handleRemoveAllCommand(entityType: string, command: string) {
 
   if (confirmation === 'Yes, Remove All') {
     const published = controller.publishSysCommand(command);
-    if (!published) {
+    if (published) {
       // Error message already shown by publishSysCommand if not connected
+      // ---> NEW: Clear the corresponding category in the provider
+      if (corefluxEntitiesProvider && (entityType === 'Models' || entityType === 'Actions' || entityType === 'Rules' || entityType === 'Routes')) {
+        console.log(`[Extension] Remove All ${entityType}: Clearing provider category.`);
+        corefluxEntitiesProvider.clearCategory(entityType);
+      } else {
+        console.warn(`[Extension] Could not clear category '${entityType}' - provider or type invalid.`);
+      }
+      // Provider's clearCategory already calls refresh()
+    } else {
+      // If publish failed, don't clear the local view
+      console.log(`[Extension] Remove All ${entityType}: Publish failed, not clearing provider category.`);
     }
   } else {
     vscode.window.showInformationMessage(`Remove all ${entityType} cancelled.`);
@@ -1181,7 +1239,7 @@ function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): s
     htmlContent = htmlContent.replace('${scriptUri}', scriptUri.toString());
     htmlContent = htmlContent.replace('${nonce}', nonce);
     // Inject CSP meta tag (adjust default-src as needed for CDNs or other resources)
-    const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' ${webview.cspSource} https://cdn.jsdelivr.net; img-src ${webview.cspSource} data:; font-src ${webview.cspSource};">`;
+    const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' ${webview.cspSource} https://cdn.jsdelivr.net; img-src ${webview.cspSource};">`;
     htmlContent = htmlContent.replace(
       '<!-- CSP Source MUST be specified in the meta tag -->',
       csp

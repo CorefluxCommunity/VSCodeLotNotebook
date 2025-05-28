@@ -2,7 +2,7 @@
 	"name": "vscode-lot-notebooks",
 	"displayName": "LOT Notebooks",
 	"description": "Coreflux VS Code Notebooks for LOT language, leveraging making data-driven systems",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"publisher": "Coreflux",
 	"engines": {
 		"vscode": "^1.85.0"

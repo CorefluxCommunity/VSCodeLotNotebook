@@ -1,4 +1,4 @@
-# LOT VSCode Notebooks Extension (v0.2.5)
+# LOT VSCode Notebooks Extension (v0.3.0)
 
 **LOT Notebooks** is a Visual Studio Code extension that provides:
 - A **notebook** interface for the **LOT** (Language of Things) DSL
@@ -26,9 +26,10 @@
    - Ask questions about LOT syntax, concepts, or request code examples.
    - Includes Markdown rendering, diagram rendering (Mermaid), and code block copying.
 
-5. **“Explain Language Of Things Cell with Anselmo”** (Button per LOT cell)  
-   - Click the comment icon (💬) on any LOT code cell toolbar (or use context menu).
-   - Sends the cell's code to the Anselmo ChatBot for a detailed explanation.
+5. **“Verification of the Status of the Broker”**   
+   - Each Code cell shows if it is synced / unsynced / missing
+   - There is a list of Components of the broker and their current standard in comparison to the Broker
+   - A context menu is created for backup / copy code / restore or place in the project
 
 6. **Add VISU Button** (Experimental)  
    - Able to create a Visualization on the fly for realtime monitoring. (experimental)
