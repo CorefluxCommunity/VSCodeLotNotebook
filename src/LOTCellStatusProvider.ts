@@ -77,7 +77,14 @@ export class LOTCellStatusProvider implements vscode.NotebookCellStatusBarItemPr
     const statusText = this.getStatusTextWithIcon(status);
     const item = new vscode.NotebookCellStatusBarItem(statusText, vscode.NotebookCellStatusBarAlignment.Left);
     item.tooltip = tooltip;
-    return [item];
+
+    // Add tip for code suggestions
+    const tipText = '💡 Press Ctrl + Space for Code Suggestions';
+    const tipItem = new vscode.NotebookCellStatusBarItem(tipText, vscode.NotebookCellStatusBarAlignment.Left);
+    tipItem.tooltip = 'Show code completions and smart suggestions for LOT.';
+    tipItem.priority = -1; // Show after the main status
+
+    return [item, tipItem];
   }
   
   /**

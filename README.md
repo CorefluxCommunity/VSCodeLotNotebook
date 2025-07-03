@@ -1,4 +1,4 @@
-# LOT VSCode Notebooks Extension (v0.3.0)
+# LOT VSCode Notebooks Extension (v0.3.1)
 
 **LOT Notebooks** is a Visual Studio Code extension that provides:
 - A **notebook** interface for the **LOT** (Language of Things) DSL
@@ -31,16 +31,6 @@
    - There is a list of Components of the broker and their current standard in comparison to the Broker
    - A context menu is created for backup / copy code / restore or place in the project
 
-6. **Add VISU Button** (Experimental)  
-   - Able to create a Visualization on the fly for realtime monitoring. (experimental)
-
-## Installation
-
-1. **From VSIX**  
-   - Download the `.vsix` file for `LOT Notebooks vx.x.x`.  
-   - In VS Code, press `Ctrl+Shift+X` (Extensions panel) → click the `...` menu → **Install from VSIX...** → select the `.vsix`.
-2. **Reload** VS Code.  
-3. **Verify** installation by searching "LOT" in the Extensions panel or checking the extension in the list.
 
 ## Usage
 
@@ -92,6 +82,11 @@
 - **[Docs: LOT Rules](https://docs.coreflux.org/LOT/rules/)**: Explains how to write and apply rules in LOT.
 
 ## Release Notes
+### v0.3.1
+- Added LOT code Completions:
+    - Dynamic Code completions for ACTIONS / ROUTES / MODELS / RULES
+    - Beginning of Introduction of VISUS (still under development)
+
 
 ### v0.3.0
 

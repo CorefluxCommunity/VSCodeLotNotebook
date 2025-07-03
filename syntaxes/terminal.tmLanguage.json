@@ -1,0 +1,41 @@
+{
+  "scopeName": "source.terminal",
+  "name": "Terminal Command",
+  "patterns": [
+    { "include": "#command" },
+    { "include": "#argument" },
+    { "include": "#string" }
+  ],
+  "repository": {
+    "command": {
+      "patterns": [
+        {
+          "name": "entity.name.function.terminal",
+          "match": "^(\s*)([a-zA-Z0-9_\-\.]+)"
+        }
+      ]
+    },
+    "argument": {
+      "patterns": [
+        {
+          "name": "variable.parameter.terminal",
+          "match": "(\s+)(--?[a-zA-Z0-9\-]+)"
+        }
+      ]
+    },
+    "string": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.terminal",
+          "begin": '"',
+          "end": '"'
+        },
+        {
+          "name": "string.quoted.single.terminal",
+          "begin": "'",
+          "end": "'"
+        }
+      ]
+    }
+  }
+} 

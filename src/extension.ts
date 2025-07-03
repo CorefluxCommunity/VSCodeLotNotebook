@@ -9,6 +9,7 @@ import { LOTCellStatusProvider } from './LOTCellStatusProvider';
 import * as mqtt from 'mqtt';
 import * as path from 'path'; // Needed for webview resource paths
 import * as fs from 'fs'; // Needed for reading HTML file
+import { LOTCompletionProvider } from './LOTCompletionProvider';
 
 const payloadMap = new Map<string, string>();
 let corefluxEntitiesProvider: CorefluxEntitiesProvider;
@@ -19,7 +20,7 @@ let anselmoPanel: vscode.WebviewPanel | undefined = undefined;
 let anselmoSessionId: string | undefined = undefined;
 let associatedNotebookUri: vscode.Uri | undefined = undefined;
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
   console.log('---> LOT Notebook Extension ACTIVATE function started! <---');
   console.log('LOT Notebook extension is now active!');
 
@@ -310,6 +311,25 @@ export function activate(context: vscode.ExtensionContext) {
 
   // ---> UPDATED: Use this command to open the Anselmo Webview <---
   const openChatbotCmd = vscode.commands.registerCommand('lot.openChatbot', async () => {
+    // Check if Anselmo is enabled in experimental features
+    const config = vscode.workspace.getConfiguration('lotNotebook');
+    const isAnselmoEnabled = config.get('experimentalFeatures.anselmoChatbot', false);
+    
+    if (!isAnselmoEnabled) {
+      const enableAction = 'Enable Experimental Feature';
+      const result = await vscode.window.showInformationMessage(
+        'Anselmo ChatBot is an experimental feature. Would you like to enable it?',
+        enableAction,
+        'Cancel'
+      );
+      
+      if (result === enableAction) {
+        await config.update('experimentalFeatures.anselmoChatbot', true, vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage('Anselmo ChatBot enabled! The window will reload to show the new features.');
+        return;
+      }
+      return;
+    }
     const columnToShowIn = vscode.window.activeTextEditor 
       ? vscode.window.activeTextEditor.viewColumn 
       : vscode.ViewColumn.Beside;
@@ -546,6 +566,54 @@ export function activate(context: vscode.ExtensionContext) {
   });
   context.subscriptions.push(openChatbotCmd);
 
+  // ---> NEW: Enable Experimental Features Command <---
+  context.subscriptions.push(
+    vscode.commands.registerCommand('lot-notebook.enableExperimentalFeatures', async () => {
+      const config = vscode.workspace.getConfiguration('lotNotebook');
+      const isAnselmoEnabled = config.get('experimentalFeatures.anselmoChatbot', false);
+      
+      if (isAnselmoEnabled) {
+        vscode.window.showInformationMessage('Experimental features are already enabled!');
+        return;
+      }
+      
+      const result = await vscode.window.showWarningMessage(
+        'This will enable experimental features including Anselmo ChatBot. These features are still in development and may be unstable. Continue?',
+        'Enable Experimental Features',
+        'Cancel'
+      );
+      
+      if (result === 'Enable Experimental Features') {
+        await config.update('experimentalFeatures.anselmoChatbot', true, vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage('Experimental features enabled! The window will reload to show the new features.');
+      }
+    })
+  );
+
+  // ---> NEW: Disable Experimental Features Command <---
+  context.subscriptions.push(
+    vscode.commands.registerCommand('lot-notebook.disableExperimentalFeatures', async () => {
+      const config = vscode.workspace.getConfiguration('lotNotebook');
+      const isAnselmoEnabled = config.get('experimentalFeatures.anselmoChatbot', false);
+      
+      if (!isAnselmoEnabled) {
+        vscode.window.showInformationMessage('Experimental features are already disabled!');
+        return;
+      }
+      
+      const result = await vscode.window.showWarningMessage(
+        'This will disable experimental features including Anselmo ChatBot. Continue?',
+        'Disable Experimental Features',
+        'Cancel'
+      );
+      
+      if (result === 'Disable Experimental Features') {
+        await config.update('experimentalFeatures.anselmoChatbot', false, vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage('Experimental features disabled! The window will reload to hide the experimental features.');
+      }
+    })
+  );
+
   // ---> NEW HELPER FUNCTION for API call <--
   async function callAnselmoApi(query: string, context: string, panel: vscode.WebviewPanel) {
     if (!panel || !panel.visible) { // Check visibility too
@@ -668,6 +736,26 @@ export function activate(context: vscode.ExtensionContext) {
   // ---> NEW: Explain Code Command <---
   context.subscriptions.push(
     vscode.commands.registerCommand('lot-notebook.explainCell', async (contextArg?: vscode.NotebookCell | vscode.Uri | unknown) => {
+      // Check if Anselmo is enabled in experimental features
+      const config = vscode.workspace.getConfiguration('lotNotebook');
+      const isAnselmoEnabled = config.get('experimentalFeatures.anselmoChatbot', false);
+      
+      if (!isAnselmoEnabled) {
+        const enableAction = 'Enable Experimental Feature';
+        const result = await vscode.window.showInformationMessage(
+          'Anselmo ChatBot is an experimental feature. Would you like to enable it?',
+          enableAction,
+          'Cancel'
+        );
+        
+        if (result === enableAction) {
+          await config.update('experimentalFeatures.anselmoChatbot', true, vscode.ConfigurationTarget.Global);
+          vscode.window.showInformationMessage('Anselmo ChatBot enabled! The window will reload to show the new features.');
+          return;
+        }
+        return;
+      }
+      
       // Argument type could be NotebookCell (from inline button), Uri (maybe from context menu?), or unknown
       console.log('[explainCell] Command triggered. Arg:', contextArg ? JSON.stringify(contextArg) : 'No Arg provided.');
       let cell: vscode.NotebookCell | undefined;
@@ -1156,6 +1244,62 @@ export function activate(context: vscode.ExtensionContext) {
   // ---> NEW: Register Apply Cell Update Command <---
   context.subscriptions.push(
     vscode.commands.registerCommand('lot.applyCellUpdate', applyCellUpdateHandler)
+  );
+
+  // Register LOT completion provider with higher priority
+  const lotCompletionProvider = vscode.languages.registerCompletionItemProvider(
+    { 
+      scheme: 'file', 
+      language: 'lot',
+      pattern: '**/*.lotnb'  // Only trigger in LOT notebook files
+    },
+    new LOTCompletionProvider(),
+    ' ', // Trigger on space
+    'D', // Trigger on D for DEFINE
+    'W', // Trigger on W for WITH
+    'G', // Trigger on G for GET
+    'P', // Trigger on P for PUBLISH
+    'K', // Trigger on K for KEEP
+    'C', // Trigger on C for COLLAPSED
+    'I', // Trigger on I for IF
+    'E', // Trigger on E for ELSE
+    'T', // Trigger on T for THEN
+    'O', // Trigger on O for ON
+    'F'  // Trigger on F for FROM
+  );
+  context.subscriptions.push(lotCompletionProvider);
+
+  // Register a second provider specifically for notebook cells
+  const lotNotebookCompletionProvider = vscode.languages.registerCompletionItemProvider(
+    { 
+      scheme: 'vscode-notebook-cell',
+      language: 'lot'
+    },
+    new LOTCompletionProvider(),
+    ' ', // Trigger on space
+    'D', // Trigger on D for DEFINE
+    'W', // Trigger on W for WITH
+    'G', // Trigger on G for GET
+    'P', // Trigger on P for PUBLISH
+    'K', // Trigger on K for KEEP
+    'C', // Trigger on C for COLLAPSED
+    'I', // Trigger on I for IF
+    'E', // Trigger on E for ELSE
+    'T', // Trigger on T for THEN
+    'O', // Trigger on O for ON
+    'F'  // Trigger on F for FROM
+  );
+  context.subscriptions.push(lotNotebookCompletionProvider);
+
+  // --- Configuration Change Listener for Experimental Features ---
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration(event => {
+      if (event.affectsConfiguration('lotNotebook.experimentalFeatures.anselmoChatbot')) {
+        console.log('[Extension] Anselmo experimental feature configuration changed');
+        // Refresh the UI to show/hide Anselmo buttons
+        vscode.commands.executeCommand('workbench.action.reloadWindow');
+      }
+    })
   );
 }
 

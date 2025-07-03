@@ -2,7 +2,7 @@
 	"name": "vscode-lot-notebooks",
 	"displayName": "LOT Notebooks",
 	"description": "Coreflux VS Code Notebooks for LOT language, leveraging making data-driven systems",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"publisher": "Coreflux",
 	"engines": {
 		"vscode": "^1.85.0"
@@ -17,12 +17,9 @@
 	"main": "./dist/extension.js",
 	"contributes": {
 		"menus": {
-			"commandPalette": [
-			],
-			"editor/title": [
-			],
-			"view/title": [
-			],
+			"commandPalette": [],
+			"editor/title": [],
+			"view/title": [],
 			"view/item/context": [
 				{
 					"command": "corefluxEntities.copyCode",
@@ -54,14 +51,14 @@
 				{
 					"command": "lot.openChatbot",
 					"group": "navigation",
-					"when": "notebookType == lot-notebook"
+					"when": "notebookType == lot-notebook && config.lotNotebook.experimentalFeatures.anselmoChatbot"
 				}
 			],
 			"notebook/cell/context": [
 				{
 					"command": "lot-notebook.explainCell",
 					"group": "navigation",
-					"when": "notebookType == lot-notebook && notebookCellType == code"
+					"when": "notebookType == lot-notebook && notebookCellType == code && config.lotNotebook.experimentalFeatures.anselmoChatbot"
 				}
 			]
 		},
@@ -151,6 +148,16 @@
 				"command": "lot-notebook.explainCell",
 				"title": "Explain Language Of Things Cell with Anselmo",
 				"category": "Language Of Things"
+			},
+			{
+				"command": "lot-notebook.enableExperimentalFeatures",
+				"title": "Enable Experimental Features",
+				"category": "LOT Notebook"
+			},
+			{
+				"command": "lot-notebook.disableExperimentalFeatures",
+				"title": "Disable Experimental Features",
+				"category": "LOT Notebook"
 			}
 		],
 		"notebooks": [
@@ -173,6 +180,14 @@
 				"mimeTypes": [
 					"application/lot-tree+json"
 				]
+			},
+			{
+				"id": "lotShellRenderer",
+				"displayName": "LOT Shell Renderer",
+				"entrypoint": "./dist/renderer/shellRenderer.js",
+				"mimeTypes": [
+					"application/lot-shell+json"
+				]
 			}
 		],
 		"iconThemes": [
@@ -194,6 +209,31 @@
 					".cf"
 				],
 				"configuration": "./language-configuration.json"
+			},
+			{
+				"id": "shellscript",
+				"aliases": [
+					"Shell Script",
+					"Bash",
+					"shellscript",
+					"sh",
+					"bash"
+				],
+				"extensions": [
+					".sh"
+				]
+			},
+			{
+				"id": "terminal",
+				"aliases": [
+					"Terminal",
+					"Command",
+					"cmd",
+					"powershell",
+					"sh",
+					"bash"
+				],
+				"extensions": []
 			}
 		],
 		"grammars": [
@@ -201,7 +241,36 @@
 				"language": "lot",
 				"scopeName": "source.lot",
 				"path": "./syntaxes/lot.tmLanguage.json"
+			},
+			{
+				"language": "terminal",
+				"scopeName": "source.terminal",
+				"path": "./syntaxes/terminal.tmLanguage.json"
 			}
+		],
+		"configuration": {
+			"title": "LOT Notebook",
+			"properties": {
+				"lotNotebook.experimentalFeatures": {
+					"type": "object",
+					"title": "Experimental Features",
+					"description": "Enable experimental features that are still in development",
+					"properties": {
+						"anselmoChatbot": {
+							"type": "boolean",
+							"default": false,
+							"description": "Enable Anselmo ChatBot (experimental AI assistant for LOT notebooks)"
+						}
+					}
+				}
+			}
+		},
+		"notebookCellLanguages": [
+			"lot",
+			"markdown",
+			"bash",
+			"shellscript",
+			"terminal"
 		]
 	},
 	"scripts": {
@@ -225,11 +294,12 @@
 	},
 	"dependencies": {
 		"@types/vscode-notebook-renderer": "^1.72.3",
+		"ansi-to-html": "^0.7.2",
 		"markdown-it": "^14.1.0",
 		"mermaid": "^10.9.0",
 		"mqtt": "^5.10.3",
-		"node-fetch": "^3.3.2"
+		"node-fetch": "^3.3.2",
+		"tree-kill": "^1.2.2"
 	},
-	"extensionDependencies": [
-	]
+	"extensionDependencies": []
 }

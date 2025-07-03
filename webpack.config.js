@@ -11,7 +11,8 @@ const config = {
   mode: 'none', 
   entry: {
     extension: './src/extension.ts',
-    'renderer/treeRenderer': './src/renderer/treeRenderer.ts'
+    'renderer/treeRenderer': './src/renderer/treeRenderer.ts',
+    'renderer/shellRenderer': './src/renderer/shellRenderer.ts'
     // 'media/anselmoChat': './src/media/anselmoChat.js'
   },
   output: {

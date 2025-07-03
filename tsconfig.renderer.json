@@ -20,5 +20,6 @@
   // Only compile the renderer code
   "include": [
     "src/renderer/treeRenderer.ts",
+    "src/renderer/shellRenderer.ts"
   ]
 }

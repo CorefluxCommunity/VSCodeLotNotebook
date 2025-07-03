@@ -7,6 +7,8 @@ import { getOrPromptBrokerCredentials, MqttCredentials } from './credentials'; /
 import { MqttTopicProvider } from './MqttTopicProvider';
 import { EventEmitter } from 'events'; // Import EventEmitter
 import { CorefluxEntitiesProvider } from './CorefluxEntitiesProvider'; // Import provider
+import { exec } from 'child_process';
+import * as os from 'os';
 
 type CellStep = 'remove' | 'add' | 'subscribe' | 'live' | 'done' | 'failed';
 
@@ -29,7 +31,7 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
   readonly controllerId = 'lot-notebook-controller-id';
   readonly notebookType = 'lot-notebook';
   readonly label = 'LOT Notebook';
-  readonly supportedLanguages = ['lot'];
+  readonly supportedLanguages = ['lot', 'markdown', 'shellscript', 'bash', 'terminal'];
 
   private readonly _controller: vscode.NotebookController;
   private _executionOrder = 0;
@@ -94,6 +96,117 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
     );
 
     return htmlOutputItem;
+  }
+
+  /**
+   * Parse parsing error details from broker output
+   * Example: "Parsing error: Expected one of STRING, but found PARSE ERROR IDENTIFIER (2,9)"
+   */
+  private _parseParsingError(payload: string): { hasError: boolean; line?: number; column?: number; message?: string; details?: string; suggestions?: string } {
+    // Make regex multiline and more robust
+    const parsingErrorMatch = payload.match(/Parsing error:\s*([\s\S]+?)(?:\s+with Errors:\s*([\s\S]+))?$/im);
+    if (!parsingErrorMatch) {
+      return { hasError: false };
+    }
+
+    const errorMessage = parsingErrorMatch[1]?.trim();
+    const errorDetails = parsingErrorMatch[2]?.trim();
+    
+    // Try to extract line and column from the error message
+    // Look for patterns like "(2,9)" or "line 2, column 9"
+    const positionMatch = errorMessage?.match(/\((\d+),(\d+)\)/) || errorMessage?.match(/line\s+(\d+),\s*column\s+(\d+)/i);
+    
+    let line: number | undefined;
+    let column: number | undefined;
+    
+    if (positionMatch) {
+      line = parseInt(positionMatch[1], 10);
+      column = parseInt(positionMatch[2], 10);
+    }
+
+    // Extract Suggestions section (multi-line)
+    let suggestions: string | undefined = undefined;
+    const suggestionsMatch = payload.match(/Suggestions:\s*([\s\S]*)/i);
+    if (suggestionsMatch) {
+      suggestions = suggestionsMatch[1].trim();
+    }
+
+    console.log('[LOTController] Parsing error detected:', { line, column, errorMessage, errorDetails, suggestions });
+    return {
+      hasError: true,
+      line,
+      column,
+      message: errorMessage,
+      details: errorDetails,
+      suggestions
+    };
+  }
+
+  /**
+   * Create enhanced error output with parsing error details
+   */
+  private _createParsingErrorOutput(errorInfo: { line?: number; column?: number; message?: string; details?: string; suggestions?: string }, code: string): vscode.NotebookCellOutputItem {
+    let errorHtml = `
+      <div style="background-color:rgba(255, 0, 0, 0.10); color:white; padding:10px; border-left:4px solid #ff4444;">
+        <h4 style="margin:0 0 10px 0; color:#ff6666;">🔍 Parsing Error Detected</h4>
+    `;
+
+    if (errorInfo.message) {
+      errorHtml += `<p style="margin:5px 0;"><strong>Error:</strong> ${errorInfo.message}</p>`;
+    }
+
+    if (errorInfo.details) {
+      errorHtml += `<p style="margin:5px 0;"><strong>Details:</strong> ${errorInfo.details}</p>`;
+    }
+
+    if (errorInfo.line !== undefined && errorInfo.column !== undefined) {
+      errorHtml += `<p style="margin:5px 0;"><strong>Position:</strong> Line ${errorInfo.line}, Column ${errorInfo.column}</p>`;
+      
+      // Show the problematic line with full word highlighting
+      const codeLines = code.split('\n');
+      if (errorInfo.line <= codeLines.length) {
+        const problematicLine = codeLines[errorInfo.line - 1];
+        // Find the word at the error column
+        let start = errorInfo.column - 1;
+        let end = errorInfo.column - 1;
+        // Expand left
+        while (start > 0 && /[\w$]/.test(problematicLine[start - 1])) start--;
+        // Expand right
+        while (end < problematicLine.length && /[\w$]/.test(problematicLine[end])) end++;
+        const beforeError = problematicLine.substring(0, start);
+        const errorWord = problematicLine.substring(start, end) || problematicLine[errorInfo.column - 1] || '';
+        const afterError = problematicLine.substring(end);
+        errorHtml += `
+          <div style="background-color:rgba(0,0,0,0.3); padding:10px; margin:10px 0; border-radius:4px; font-family:monospace;">
+            <div style="color:#888;">Line ${errorInfo.line}:</div>
+            <div style="color:#fff;">
+              <span>${beforeError}</span>
+              <span style="background-color:#ff4444; color:#000; padding:1px 2px; border-radius:2px; text-decoration:underline;">${errorWord}</span>
+              <span>${afterError}</span>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    errorHtml += `
+        <p style=\"margin:10px 0 0 0; font-size:0.9em; color:#ccc;\">\n`;
+    if (errorInfo.suggestions) {
+      // Make URLs clickable
+      let suggestionsHtml = errorInfo.suggestions.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:#8cf; text-decoration:underline;">$1</a>');
+      // Preserve line breaks
+      errorHtml += `<strong>Suggestions:</strong><br><div style=\"color:#ffe; white-space:pre-line;\">${suggestionsHtml}</div>`;
+    } else {
+      errorHtml += `💡 Tip: Coreflux v.1.6.4 provides more detailed feedback, you are using a inferior version. Ensure the syntax is correct. `;
+    }
+    errorHtml += `</p>\n`;
+    errorHtml += `</div>`;
+
+    console.log('[LOTController] Showing parsing error output:', errorInfo);
+    return new vscode.NotebookCellOutputItem(
+      Buffer.from(errorHtml, 'utf8'),
+      'text/html'
+    );
   }
 
   /**
@@ -201,6 +314,58 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
 
     try { // Wrap main logic in try-finally to dispose listener
       const code = cell.document.getText();
+      const lang = cell.document.languageId;
+      if (lang === 'bash' || lang === 'shellscript' || lang === 'terminal') {
+        // Split code into individual commands (lines)
+        const commands = code.split('\n')
+          .map(line => line.trim())
+          .filter(line => line.length > 0 && !line.startsWith('#'));
+
+        if (commands.length === 0) {
+          execution.replaceOutput([new vscode.NotebookCellOutput([
+            vscode.NotebookCellOutputItem.text('No commands to execute', 'text/plain')
+          ])]);
+          execution.end(true, Date.now());
+          return;
+        }
+
+        // Get the notebook's directory
+        let notebookDir = undefined;
+        try {
+          const notebookUri = cell.notebook.uri;
+          if (notebookUri && notebookUri.fsPath) {
+            const path = require('path');
+            notebookDir = path.dirname(notebookUri.fsPath);
+          }
+        } catch (e) { /* fallback to undefined */ }
+
+        // Create or reuse a dedicated terminal
+        const terminalName = 'LOT Terminal Cell';
+        let terminal = vscode.window.terminals.find(t => t.name === terminalName);
+        if (!terminal) {
+          terminal = vscode.window.createTerminal({ name: terminalName });
+        }
+        terminal.show();
+
+        // Always send 'cd <notebookDir>' as the first command
+        if (notebookDir) {
+          terminal.sendText(`cd "${notebookDir}"`, true);
+        }
+
+        // Send each command as a separate line
+        for (const command of commands) {
+          terminal.sendText(command, true);
+        }
+
+        // Show a message in the cell
+        execution.replaceOutput([new vscode.NotebookCellOutput([
+          vscode.NotebookCellOutputItem.text(
+            `Commands sent to the integrated terminal (${terminalName}).\nCheck the terminal panel for output.`,
+            'text/plain')
+        ])]);
+        execution.end(true, Date.now());
+        return;
+      }
       const parsed = this._parseEntityTypeAndName(code);
       if (!parsed) {
         execution.replaceOutput([new vscode.NotebookCellOutput([this.createHtmlOutput('Failed to parse entity type and name from code. Expected "DEFINE MODEL <Name>", "DEFINE ACTION <Name>", or "DEFINE ROUTE <Name>, or "DEFINE RULE <Name>".', true)])]);
@@ -521,7 +686,10 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
       let isRelevant = false;
       if (cellState.step === 'remove' && mentionsName && (isSuccess || isNotFound || lowerPayload.includes('error') || lowerPayload.includes('failed'))) {
         isRelevant = true;
-      } else if (cellState.step === 'add' && mentionsName && (isSuccess || isNotFound || lowerPayload.includes('error') || lowerPayload.includes('failed'))) {
+      } else if (cellState.step === 'add' && (
+        (mentionsName && (isSuccess || isNotFound || lowerPayload.includes('error') || lowerPayload.includes('failed')))
+        || this._parseParsingError(payload).hasError // Always process parsing errors
+      )) {
         isRelevant = true;
       }
 
@@ -555,10 +723,23 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
           );
         } else if (isActualError) {
           console.log(`[${uri}] DEBUG: Remove Step - Failing due to isActualError.`); // Log failure decision
-          const item = new vscode.NotebookCellOutput([this.createHtmlOutput(`Failed to remove ${type} ${name}. Output: ${payload}`, true)]);
-          execution.replaceOutput([item]);
-          execution.end(false, Date.now());
-          cellState.step = 'failed';
+          
+          // Check for parsing errors specifically (though less likely in remove step)
+          const parsingError = this._parseParsingError(payload);
+          if (parsingError.hasError) {
+            console.log(`[${uri}] Parsing error detected in remove step: ${parsingError.message}`);
+            const errorOutput = this._createParsingErrorOutput(parsingError, code);
+            const item = new vscode.NotebookCellOutput([errorOutput]);
+            execution.replaceOutput([item]);
+            execution.end(false, Date.now());
+            cellState.step = 'failed';
+          } else {
+            // Regular error handling
+            const item = new vscode.NotebookCellOutput([this.createHtmlOutput(`Failed to remove ${type} ${name}. Output: ${payload}`, true)]);
+            execution.replaceOutput([item]);
+            execution.end(false, Date.now());
+            cellState.step = 'failed';
+          }
         } else {
           console.log(`[${uri}] DEBUG: Remove Step - Failing due to unknown output.`); // Log unknown output failure
           const item = new vscode.NotebookCellOutput([this.createHtmlOutput(`Unknown remove output for ${type} ${name}: ${payload}`, true)]);
@@ -595,10 +776,23 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
           }
         } else if (isActualError || isNotFound) {
           console.log(`[${uri}] Add Step: Condition (isActualError || isNotFound) met. Failing.`);
-          const item = new vscode.NotebookCellOutput([this.createHtmlOutput(`Failed to add ${type} ${name}. Output: ${payload}`, true)]);
-          execution.replaceOutput([item]);
-          execution.end(false, Date.now());
-          cellState.step = 'failed';
+          
+          // Check for parsing errors specifically
+          const parsingError = this._parseParsingError(payload);
+          if (parsingError.hasError) {
+            console.log(`[${uri}] Parsing error detected: ${parsingError.message}`);
+            const errorOutput = this._createParsingErrorOutput(parsingError, code);
+            const item = new vscode.NotebookCellOutput([errorOutput]);
+            execution.replaceOutput([item]);
+            execution.end(false, Date.now());
+            cellState.step = 'failed';
+          } else {
+            // Regular error handling
+            const item = new vscode.NotebookCellOutput([this.createHtmlOutput(`Failed to add ${type} ${name}. Output: ${payload}`, true)]);
+            execution.replaceOutput([item]);
+            execution.end(false, Date.now());
+            cellState.step = 'failed';
+          }
         } else {
           console.log(`[${uri}] Add Step: No condition met. Treating as unknown/failure.`);
           const item = new vscode.NotebookCellOutput([this.createHtmlOutput(`Unknown add output for ${type} ${name}: ${payload}`, true)]);
@@ -1017,5 +1211,12 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
     const commandPayload = `-add${entityType} ${entityName} ${code}`;
     // Consider potential payload size limits if code is very large
     return this.publishSysCommand(commandPayload);
+  }
+
+  public static openInUserTerminal(cell: vscode.NotebookCell) {
+    const code = cell.document.getText();
+    const terminal = vscode.window.createTerminal({ name: 'LOT Terminal Cell' });
+    terminal.show();
+    terminal.sendText(code, true);
   }
 }
