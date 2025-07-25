@@ -214,6 +214,32 @@ function buildTree(
       const payloadValueSpan = document.createElement('span');
       payloadValueSpan.innerHTML = `<strong>Payload:</strong> <span id="payloadValue-${escapeId(currentPath)}" title="Right-click to change data type">${payloadStr}</span>`;
 
+      // --- IMAGE RENDERING LOGIC ---
+      // Detect if payload is a JPEG image (base64 or with MIME prefix)
+      let isJpegImage = false;
+      let imgSrc = '';
+      // Check for MIME prefix
+      if (payloadStr.startsWith('data:image/jpeg;base64,')) {
+        isJpegImage = true;
+        imgSrc = payloadStr;
+      } else if (/^[A-Za-z0-9+/=\r\n]+$/.test(payloadStr) && payloadStr.length > 100 && (payloadStr.startsWith('/9j/') || payloadStr.startsWith('iVBOR'))) {
+        // Heuristic: base64 JPEG (or PNG) without MIME prefix, long enough, starts with JPEG or PNG magic
+        isJpegImage = true;
+        imgSrc = 'data:image/jpeg;base64,' + payloadStr.replace(/\s/g, '');
+      }
+      if (isJpegImage) {
+        const img = document.createElement('img');
+        img.src = imgSrc;
+        img.alt = 'JPEG Image';
+        img.style.maxWidth = '400px';
+        img.style.maxHeight = '300px';
+        img.style.display = 'block';
+        img.style.margin = '8px 0';
+        payloadValueSpan.appendChild(document.createElement('br'));
+        payloadValueSpan.appendChild(img);
+      }
+      // --- END IMAGE RENDERING LOGIC ---
+
       // Add context menu listener to the inner span
       const innerPayloadSpan = payloadValueSpan.querySelector<HTMLSpanElement>(`#payloadValue-${escapeId(currentPath)}`);
       if (innerPayloadSpan) {
