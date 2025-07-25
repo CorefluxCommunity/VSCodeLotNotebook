@@ -158,6 +158,11 @@
 				"command": "lot-notebook.disableExperimentalFeatures",
 				"title": "Disable Experimental Features",
 				"category": "LOT Notebook"
+			},
+			{
+				"command": "lot-notebook.new",
+				"title": "LOT Notebook: New LOT Notebook",
+				"category": "LOT Notebook"
 			}
 		],
 		"notebooks": [

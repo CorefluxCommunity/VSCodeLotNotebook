@@ -1291,6 +1291,21 @@ export async function activate(context: vscode.ExtensionContext) {
   );
   context.subscriptions.push(lotNotebookCompletionProvider);
 
+  // Command to create a new LOT Notebook
+  context.subscriptions.push(
+    vscode.commands.registerCommand('lot-notebook.new', async () => {
+      const lotCell = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, '', 'lot');
+      const notebookData = new vscode.NotebookData([lotCell]);
+      const doc = await vscode.workspace.openNotebookDocument('lot-notebook', notebookData);
+      await vscode.window.showNotebookDocument(doc);
+    })
+  );
+
+
+  // Create a new LOTController instance and register it
+  const controller = new LOTController();
+  context.subscriptions.push(controller);
+
   // --- Configuration Change Listener for Experimental Features ---
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(event => {

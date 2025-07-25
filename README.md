@@ -1,4 +1,4 @@
-# LOT VSCode Notebooks Extension (v0.3.1)
+# LOT VSCode Notebooks Extension (v0.3.2)
 
 **LOT Notebooks** is a Visual Studio Code extension that provides:
 - A **notebook** interface for the **LOT** (Language of Things) DSL
