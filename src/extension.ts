@@ -1302,9 +1302,7 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
 
-  // Create a new LOTController instance and register it
-  const controller = new LOTController();
-  context.subscriptions.push(controller);
+  // Controller is already created and registered earlier in the activation
 
   // --- Configuration Change Listener for Experimental Features ---
   context.subscriptions.push(

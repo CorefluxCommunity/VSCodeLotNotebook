@@ -12,7 +12,11 @@
 		"Notebooks"
 	],
 	"activationEvents": [
-		"*"
+		"onNotebook:lot-notebook",
+		"onLanguage:lot",
+		"onCommand:lot-notebook.create",
+		"onCommand:lot-notebook.new",
+		"onView:corefluxEntitiesView"
 	],
 	"main": "./dist/extension.js",
 	"contributes": {
