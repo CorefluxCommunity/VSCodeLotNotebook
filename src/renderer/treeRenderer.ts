@@ -16,6 +16,7 @@ let chartDataMap: Record<string, Array<{ time: number; rawValue: string; parsedV
 let chartOpenMap: Record<string, boolean> = {};
 let chartObjects: Record<string, any> = {};
 let dataTypeMap: Record<string, string> = {}; // Map path to selected data type (e.g., 'auto', 'int16')
+let jsonExpansionsMap: Record<string, boolean> = {}; // Track JSON breakdown expansions
 
 let chartJsLoaded = false;
 let dateAdapterLoaded = false;
@@ -66,6 +67,267 @@ async function loadChartJs(): Promise<void> {
       document.head.appendChild(script);
     });
   }
+}
+
+/**
+ * Check if a string is valid JSON
+ */
+function isValidJSON(str: string): boolean {
+  try {
+    JSON.parse(str);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if a string is a base64 encoded image
+ */
+function isBase64Image(str: string): { isImage: boolean; mimeType?: string; src?: string } {
+  const trimmed = str.trim();
+  
+  // Check for data URL format
+  const dataUrlMatch = trimmed.match(/^data:([^;]+);base64,(.+)$/);
+  if (dataUrlMatch) {
+    const mimeType = dataUrlMatch[1];
+    const base64Data = dataUrlMatch[2];
+    
+    if (mimeType.startsWith('image/')) {
+      return { isImage: true, mimeType, src: trimmed };
+    }
+  }
+  
+  // Check for raw base64 image data
+  if (/^[A-Za-z0-9+/=\r\n]+$/.test(trimmed) && trimmed.length > 100) {
+    // Common image magic bytes
+    const jpegMagic = '/9j/';
+    const pngMagic = 'iVBOR';
+    const gifMagic = 'R0lGOD';
+    const webpMagic = 'UklGR';
+    
+    if (trimmed.startsWith(jpegMagic)) {
+      return { isImage: true, mimeType: 'image/jpeg', src: `data:image/jpeg;base64,${trimmed}` };
+    } else if (trimmed.startsWith(pngMagic)) {
+      return { isImage: true, mimeType: 'image/png', src: `data:image/png;base64,${trimmed}` };
+    } else if (trimmed.startsWith(gifMagic)) {
+      return { isImage: true, mimeType: 'image/gif', src: `data:image/gif;base64,${trimmed}` };
+    } else if (trimmed.startsWith(webpMagic)) {
+      return { isImage: true, mimeType: 'image/webp', src: `data:image/webp;base64,${trimmed}` };
+    }
+  }
+  
+  return { isImage: false };
+}
+
+/**
+ * Check if a string contains HTML content
+ */
+function isHTMLContent(str: string): boolean {
+  const trimmed = str.trim();
+  
+  // Check for common HTML tags
+  const htmlTags = ['<html', '<div', '<p', '<span', '<body', '<head', '<title', '<h1', '<h2', '<h3', '<h4', '<h5', '<h6', '<ul', '<ol', '<li', '<a', '<img', '<table', '<tr', '<td', '<th', '<form', '<input', '<button', '<section', '<article', '<nav', '<header', '<footer', '<main', '<aside'];
+  
+  return trimmed.startsWith('<') && trimmed.includes('>') && 
+         htmlTags.some(tag => trimmed.includes(tag));
+}
+
+/**
+ * Render JSON breakdown
+ */
+function renderJSONBreakdown(parent: HTMLElement, jsonData: any, path: string, level: number): void {
+  const container = document.createElement('div');
+  container.style.marginLeft = `${level * 20}px`;
+  container.style.marginTop = '5px';
+  container.style.border = '1px solid #ddd';
+  container.style.borderRadius = '4px';
+  container.style.padding = '8px';
+  container.style.backgroundColor = '#f9f9f9';
+  
+  const renderValue = (value: any, key: string, currentPath: string, currentLevel: number): HTMLElement => {
+    const itemDiv = document.createElement('div');
+    itemDiv.style.marginLeft = `${currentLevel * 15}px`;
+    
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      // Object
+      const details = document.createElement('details');
+      const expanded = jsonExpansionsMap[currentPath] ?? false;
+      if (expanded) details.setAttribute('open', '');
+      
+      const summary = document.createElement('summary');
+      summary.textContent = `${key}: {}`;
+      summary.style.fontWeight = 'bold';
+      details.appendChild(summary);
+      
+      details.addEventListener('toggle', () => {
+        jsonExpansionsMap[currentPath] = details.hasAttribute('open');
+      });
+      
+      for (const [k, v] of Object.entries(value)) {
+        const childPath = `${currentPath}.${k}`;
+        details.appendChild(renderValue(v, k, childPath, currentLevel + 1));
+      }
+      
+      itemDiv.appendChild(details);
+    } else if (Array.isArray(value)) {
+      // Array
+      const details = document.createElement('details');
+      const expanded = jsonExpansionsMap[currentPath] ?? false;
+      if (expanded) details.setAttribute('open', '');
+      
+      const summary = document.createElement('summary');
+      summary.textContent = `${key}: [${value.length} items]`;
+      summary.style.fontWeight = 'bold';
+      details.appendChild(summary);
+      
+      details.addEventListener('toggle', () => {
+        jsonExpansionsMap[currentPath] = details.hasAttribute('open');
+      });
+      
+      value.forEach((item, index) => {
+        const childPath = `${currentPath}[${index}]`;
+        details.appendChild(renderValue(item, `[${index}]`, childPath, currentLevel + 1));
+      });
+      
+      itemDiv.appendChild(details);
+    } else {
+      // Primitive value
+      const valueSpan = document.createElement('span');
+      valueSpan.innerHTML = `<strong>${key}:</strong> `;
+      
+      if (typeof value === 'string') {
+        // Check if it's a base64 image
+        const imageCheck = isBase64Image(value);
+        const isHTML = isHTMLContent(value);
+        
+        if (imageCheck.isImage) {
+          const img = document.createElement('img');
+          img.src = imageCheck.src!;
+          img.alt = 'Base64 Image';
+          img.style.maxWidth = '200px';
+          img.style.maxHeight = '150px';
+          img.style.display = 'block';
+          img.style.margin = '5px 0';
+          img.style.border = '1px solid #ddd';
+          img.style.borderRadius = '3px';
+          valueSpan.appendChild(document.createTextNode(`"${value.substring(0, 50)}..."`));
+          valueSpan.appendChild(document.createElement('br'));
+          valueSpan.appendChild(img);
+        } else if (isHTML) {
+          const htmlPreview = document.createElement('div');
+          htmlPreview.innerHTML = value;
+          htmlPreview.style.maxWidth = '300px';
+          htmlPreview.style.maxHeight = '200px';
+          htmlPreview.style.overflow = 'auto';
+          htmlPreview.style.border = '1px solid #ccc';
+          htmlPreview.style.padding = '5px';
+          htmlPreview.style.backgroundColor = 'white';
+          htmlPreview.style.margin = '5px 0';
+          htmlPreview.style.borderRadius = '3px';
+          valueSpan.appendChild(document.createTextNode(`"${value.substring(0, 50)}..."`));
+          valueSpan.appendChild(document.createElement('br'));
+          valueSpan.appendChild(htmlPreview);
+        } else {
+          // Check if it's JSON within JSON
+          if (isValidJSON(value)) {
+            const jsonPreview = document.createElement('div');
+            jsonPreview.style.maxWidth = '300px';
+            jsonPreview.style.maxHeight = '150px';
+            jsonPreview.style.overflow = 'auto';
+            jsonPreview.style.border = '1px solid #ddd';
+            jsonPreview.style.padding = '5px';
+            jsonPreview.style.backgroundColor = '#f8f8f8';
+            jsonPreview.style.margin = '5px 0';
+            jsonPreview.style.borderRadius = '3px';
+            jsonPreview.style.fontFamily = 'monospace';
+            jsonPreview.style.fontSize = '11px';
+            
+            try {
+              const parsed = JSON.parse(value);
+              jsonPreview.textContent = JSON.stringify(parsed, null, 2);
+            } catch {
+              jsonPreview.textContent = value;
+            }
+            
+            valueSpan.appendChild(document.createTextNode(`"${value.substring(0, 50)}..."`));
+            valueSpan.appendChild(document.createElement('br'));
+            valueSpan.appendChild(jsonPreview);
+          } else {
+            // Check if it might be a long base64 string that could be an image
+            if (value.length > 100 && /^[A-Za-z0-9+/=\r\n]+$/.test(value)) {
+              const longBase64Preview = document.createElement('div');
+              longBase64Preview.style.maxWidth = '300px';
+              longBase64Preview.style.maxHeight = '100px';
+              longBase64Preview.style.overflow = 'auto';
+              longBase64Preview.style.border = '1px solid #ddd';
+              longBase64Preview.style.padding = '5px';
+              longBase64Preview.style.backgroundColor = '#f0f0f0';
+              longBase64Preview.style.margin = '5px 0';
+              longBase64Preview.style.borderRadius = '3px';
+              longBase64Preview.style.fontFamily = 'monospace';
+              longBase64Preview.style.fontSize = '10px';
+              longBase64Preview.style.wordBreak = 'break-all';
+              longBase64Preview.textContent = value.substring(0, 200) + (value.length > 200 ? '...' : '');
+              longBase64Preview.title = 'Long base64 string (possibly image data)';
+              
+              valueSpan.appendChild(document.createTextNode(`"${value.substring(0, 50)}..."`));
+              valueSpan.appendChild(document.createElement('br'));
+              valueSpan.appendChild(longBase64Preview);
+            } else {
+              valueSpan.appendChild(document.createTextNode(`"${value}"`));
+            }
+          }
+        }
+      } else {
+        valueSpan.appendChild(document.createTextNode(String(value)));
+      }
+      
+      itemDiv.appendChild(valueSpan);
+    }
+    
+    return itemDiv;
+  };
+  
+  if (typeof jsonData === 'object' && jsonData !== null) {
+    for (const [key, value] of Object.entries(jsonData)) {
+      container.appendChild(renderValue(value, key, `${path}.${key}`, 0));
+    }
+  }
+  
+  parent.appendChild(container);
+}
+
+/**
+ * Render HTML content in an iframe
+ */
+function renderHTMLContent(parent: HTMLElement, htmlContent: string, path: string): void {
+  const container = document.createElement('div');
+  container.style.marginTop = '5px';
+  container.style.border = '1px solid #ddd';
+  container.style.borderRadius = '4px';
+  container.style.overflow = 'hidden';
+  
+  const header = document.createElement('div');
+  header.style.backgroundColor = '#f0f0f0';
+  header.style.padding = '5px 10px';
+  header.style.borderBottom = '1px solid #ddd';
+  header.style.fontWeight = 'bold';
+  header.textContent = 'HTML Preview';
+  
+  const iframe = document.createElement('iframe');
+  iframe.style.width = '100%';
+  iframe.style.height = '300px';
+  iframe.style.border = 'none';
+  iframe.style.backgroundColor = 'white';
+  
+  // Create a blob URL for the HTML content
+  const blob = new Blob([htmlContent], { type: 'text/html' });
+  iframe.src = URL.createObjectURL(blob);
+  
+  container.appendChild(header);
+  container.appendChild(iframe);
+  parent.appendChild(container);
 }
 
 export function activate(): RenderOutputFunctions {
@@ -212,33 +474,226 @@ function buildTree(
 
       // Wrap payload value in a span for context menu
       const payloadValueSpan = document.createElement('span');
-      payloadValueSpan.innerHTML = `<strong>Payload:</strong> <span id="payloadValue-${escapeId(currentPath)}" title="Right-click to change data type">${payloadStr}</span>`;
+      
+      // Handle very large payloads
+      let displayValue = payloadStr;
+      let isTruncated = false;
+      const maxDisplayLength = 500;
+      
+      if (payloadStr.length > maxDisplayLength) {
+        displayValue = payloadStr.substring(0, maxDisplayLength) + '...';
+        isTruncated = true;
+      }
+      
+      payloadValueSpan.innerHTML = `<strong>Payload:</strong> <span id="payloadValue-${escapeId(currentPath)}" title="Right-click to change data type">${displayValue}</span>`;
+      
+      // Add full payload tooltip if truncated
+      if (isTruncated) {
+        const payloadSpan = payloadValueSpan.querySelector(`#payloadValue-${escapeId(currentPath)}`);
+        if (payloadSpan) {
+          payloadSpan.title = `Right-click to change data type\n\nFull payload (${payloadStr.length} chars):\n${payloadStr}`;
+        }
+      }
 
-      // --- IMAGE RENDERING LOGIC ---
-      // Detect if payload is a JPEG image (base64 or with MIME prefix)
-      let isJpegImage = false;
-      let imgSrc = '';
-      // Check for MIME prefix
-      if (payloadStr.startsWith('data:image/jpeg;base64,')) {
-        isJpegImage = true;
-        imgSrc = payloadStr;
-      } else if (/^[A-Za-z0-9+/=\r\n]+$/.test(payloadStr) && payloadStr.length > 100 && (payloadStr.startsWith('/9j/') || payloadStr.startsWith('iVBOR'))) {
-        // Heuristic: base64 JPEG (or PNG) without MIME prefix, long enough, starts with JPEG or PNG magic
-        isJpegImage = true;
-        imgSrc = 'data:image/jpeg;base64,' + payloadStr.replace(/\s/g, '');
+      // --- ENHANCED CONTENT RENDERING LOGIC ---
+      // Check for JSON content
+      const isJSON = isValidJSON(payloadStr);
+      
+      // Check for base64 image content
+      const imageCheck = isBase64Image(payloadStr);
+      
+      // Check for HTML content
+      const isHTML = isHTMLContent(payloadStr);
+      
+      // Check if payload contains nested JSON (common in API responses)
+      let nestedJSONData: any = null;
+      if (!isJSON && payloadStr.includes('{') && payloadStr.includes('}')) {
+        try {
+          // Try to extract JSON from the payload
+          const jsonMatch = payloadStr.match(/\{.*\}/s);
+          if (jsonMatch) {
+            nestedJSONData = JSON.parse(jsonMatch[0]);
+          }
+        } catch {
+          // Ignore parsing errors
+        }
       }
-      if (isJpegImage) {
-        const img = document.createElement('img');
-        img.src = imgSrc;
-        img.alt = 'JPEG Image';
-        img.style.maxWidth = '400px';
-        img.style.maxHeight = '300px';
-        img.style.display = 'block';
-        img.style.margin = '8px 0';
-        payloadValueSpan.appendChild(document.createElement('br'));
-        payloadValueSpan.appendChild(img);
+      
+      // Create action buttons container
+      const actionButtonsDiv = document.createElement('div');
+      actionButtonsDiv.style.marginTop = '5px';
+      actionButtonsDiv.style.display = 'flex';
+      actionButtonsDiv.style.gap = '5px';
+      actionButtonsDiv.style.flexWrap = 'wrap';
+      
+      // JSON breakdown button
+      if (isJSON) {
+        const jsonButton = document.createElement('button');
+        jsonButton.textContent = '🔍 Break Down JSON';
+        jsonButton.style.padding = '2px 8px';
+        jsonButton.style.fontSize = '11px';
+        jsonButton.style.cursor = 'pointer';
+        jsonButton.style.backgroundColor = '#4CAF50';
+        jsonButton.style.color = 'white';
+        jsonButton.style.border = 'none';
+        jsonButton.style.borderRadius = '3px';
+        jsonButton.title = 'Expand JSON structure';
+        
+        jsonButton.addEventListener('click', () => {
+          const existingBreakdown = payloadDiv.querySelector(`#jsonBreakdown-${escapeId(currentPath)}`);
+          if (existingBreakdown) {
+            existingBreakdown.remove();
+            jsonButton.textContent = '🔍 Break Down JSON';
+          } else {
+            try {
+              const jsonData = JSON.parse(payloadStr);
+              const breakdownDiv = document.createElement('div');
+              breakdownDiv.id = `jsonBreakdown-${escapeId(currentPath)}`;
+              renderJSONBreakdown(breakdownDiv, jsonData, currentPath, level + 1);
+              payloadDiv.appendChild(breakdownDiv);
+              jsonButton.textContent = '🔽 Hide JSON';
+            } catch (err) {
+              console.error('Failed to parse JSON:', err);
+              // Show error to user
+              const errorDiv = document.createElement('div');
+              errorDiv.style.color = 'red';
+              errorDiv.style.fontSize = '11px';
+              errorDiv.style.marginTop = '5px';
+              errorDiv.textContent = `Error parsing JSON: ${err.message}`;
+              payloadDiv.appendChild(errorDiv);
+              // Remove error after 3 seconds
+              setTimeout(() => errorDiv.remove(), 3000);
+            }
+          }
+        });
+        
+        actionButtonsDiv.appendChild(jsonButton);
       }
-      // --- END IMAGE RENDERING LOGIC ---
+      
+      // Nested JSON breakdown button
+      if (nestedJSONData) {
+        const nestedJsonButton = document.createElement('button');
+        nestedJsonButton.textContent = '🔍 Extract JSON';
+        nestedJsonButton.style.padding = '2px 8px';
+        nestedJsonButton.style.fontSize = '11px';
+        nestedJsonButton.style.cursor = 'pointer';
+        nestedJsonButton.style.backgroundColor = '#9C27B0';
+        nestedJsonButton.style.color = 'white';
+        nestedJsonButton.style.border = 'none';
+        nestedJsonButton.style.borderRadius = '3px';
+        nestedJsonButton.title = 'Extract and expand nested JSON';
+        
+        nestedJsonButton.addEventListener('click', () => {
+          const existingBreakdown = payloadDiv.querySelector(`#nestedJsonBreakdown-${escapeId(currentPath)}`);
+          if (existingBreakdown) {
+            existingBreakdown.remove();
+            nestedJsonButton.textContent = '🔍 Extract JSON';
+          } else {
+            const breakdownDiv = document.createElement('div');
+            breakdownDiv.id = `nestedJsonBreakdown-${escapeId(currentPath)}`;
+            renderJSONBreakdown(breakdownDiv, nestedJSONData, `${currentPath}.extracted`, level + 1);
+            payloadDiv.appendChild(breakdownDiv);
+            nestedJsonButton.textContent = '🔽 Hide JSON';
+          }
+        });
+        
+        actionButtonsDiv.appendChild(nestedJsonButton);
+      }
+      
+      // Image preview button
+      if (imageCheck.isImage) {
+        const imageButton = document.createElement('button');
+        imageButton.textContent = '🖼️ Show Image';
+        imageButton.style.padding = '2px 8px';
+        imageButton.style.fontSize = '11px';
+        imageButton.style.cursor = 'pointer';
+        imageButton.style.backgroundColor = '#2196F3';
+        imageButton.style.color = 'white';
+        imageButton.style.border = 'none';
+        imageButton.style.borderRadius = '3px';
+        imageButton.title = 'Display image preview';
+        
+        imageButton.addEventListener('click', () => {
+          const existingImage = payloadDiv.querySelector(`#imagePreview-${escapeId(currentPath)}`);
+          if (existingImage) {
+            existingImage.remove();
+            imageButton.textContent = '🖼️ Show Image';
+          } else {
+            const img = document.createElement('img');
+            img.id = `imagePreview-${escapeId(currentPath)}`;
+            img.src = imageCheck.src!;
+            img.alt = 'Base64 Image';
+            img.style.maxWidth = '400px';
+            img.style.maxHeight = '300px';
+            img.style.display = 'block';
+            img.style.margin = '8px 0';
+            img.style.border = '1px solid #ddd';
+            img.style.borderRadius = '4px';
+            payloadDiv.appendChild(img);
+            imageButton.textContent = '🖼️ Hide Image';
+          }
+        });
+        
+        actionButtonsDiv.appendChild(imageButton);
+      }
+      
+      // HTML preview button
+      if (isHTML) {
+        const htmlButton = document.createElement('button');
+        htmlButton.textContent = '🌐 Show HTML';
+        htmlButton.style.padding = '2px 8px';
+        htmlButton.style.fontSize = '11px';
+        htmlButton.style.cursor = 'pointer';
+        htmlButton.style.backgroundColor = '#FF9800';
+        htmlButton.style.color = 'white';
+        htmlButton.style.border = 'none';
+        htmlButton.style.borderRadius = '3px';
+        htmlButton.title = 'Display HTML preview';
+        
+        htmlButton.addEventListener('click', () => {
+          const existingHTML = payloadDiv.querySelector(`#htmlPreview-${escapeId(currentPath)}`);
+          if (existingHTML) {
+            existingHTML.remove();
+            htmlButton.textContent = '🌐 Show HTML';
+          } else {
+            try {
+              const htmlContainer = document.createElement('div');
+              htmlContainer.id = `htmlPreview-${escapeId(currentPath)}`;
+              renderHTMLContent(htmlContainer, payloadStr, currentPath);
+              payloadDiv.appendChild(htmlContainer);
+              htmlButton.textContent = '🌐 Hide HTML';
+            } catch (err) {
+              console.error('Failed to render HTML:', err);
+              // Show error to user
+              const errorDiv = document.createElement('div');
+              errorDiv.style.color = 'red';
+              errorDiv.style.fontSize = '11px';
+              errorDiv.style.marginTop = '5px';
+              errorDiv.textContent = `Error rendering HTML: ${err.message}`;
+              payloadDiv.appendChild(errorDiv);
+              // Remove error after 3 seconds
+              setTimeout(() => errorDiv.remove(), 3000);
+            }
+          }
+        });
+        
+        actionButtonsDiv.appendChild(htmlButton);
+      }
+      
+      // Add action buttons to payload div
+      if (actionButtonsDiv.children.length > 0) {
+        payloadDiv.appendChild(actionButtonsDiv);
+        
+        // Add a small info text
+        const infoText = document.createElement('div');
+        infoText.style.fontSize = '10px';
+        infoText.style.color = '#666';
+        infoText.style.marginTop = '3px';
+        infoText.style.fontStyle = 'italic';
+        infoText.textContent = 'Click buttons above to interact with content';
+        payloadDiv.appendChild(infoText);
+      }
+      // --- END ENHANCED CONTENT RENDERING LOGIC ---
 
       // Add context menu listener to the inner span
       const innerPayloadSpan = payloadValueSpan.querySelector<HTMLSpanElement>(`#payloadValue-${escapeId(currentPath)}`);
