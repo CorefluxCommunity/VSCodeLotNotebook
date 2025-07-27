@@ -2,7 +2,7 @@
 import * as vscode from 'vscode';
 import * as mqtt from 'mqtt';
 import * as os from 'os';
-import { v4 as uuidv4 } from 'uuid';
+import * as uuid from 'uuid';
 
 export interface TelemetryEvent {
   guid: string;
@@ -75,12 +75,12 @@ export class TelemetryService {
   }
 
   private getOrCreateGUID(): string {
-    let guid = this.context.globalState.get<string>('telemetry.guid');
-    if (!guid) {
-      guid = uuidv4();
-      this.context.globalState.update('telemetry.guid', guid);
+    let storedGuid = this.context.globalState.get<string>('telemetry.guid');
+    if (!storedGuid) {
+      storedGuid = uuid.v4();
+      this.context.globalState.update('telemetry.guid', storedGuid);
     }
-    return guid!; // We know it's defined after the if check
+    return storedGuid; // TypeScript now knows this is always a string
   }
 
   public isTelemetryEnabled(): boolean {
