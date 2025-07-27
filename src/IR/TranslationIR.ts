@@ -25,6 +25,7 @@ export type DataType =
   | 'REAL' | 'LREAL'
   | 'STRING' | 'WSTRING'
   | 'TIME' | 'DATE' | 'TIME_OF_DAY' | 'DATE_AND_TIME'
+  | 'TON' | 'TOF' | 'TP' // Timer function blocks
   | 'ARRAY' | 'STRUCT'
   | 'OBJECT' | 'NUMBER' | 'BOOLEAN'; // LOT equivalents
 
@@ -172,6 +173,12 @@ export interface SetStatement extends Statement {
   statementType: 'Set';
   variable: string;
   value: Expression;
+}
+
+export interface FunctionCallStatement extends Statement {
+  statementType: 'FunctionCall';
+  functionName: string;
+  arguments: Expression[];
 }
 
 // ============================================================================

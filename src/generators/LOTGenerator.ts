@@ -203,6 +203,8 @@ export class LOTGenerator {
         return this.generateIfStatement(statement as IfStatement, indent);
       case 'ForLoop':
         return this.generateForLoop(statement as ForLoop, indent);
+      case 'FunctionCall':
+        return this.generateFunctionCall(statement as any, indent);
       default:
         return `${indent}// Unsupported statement: ${statement.statementType}`;
     }
@@ -300,6 +302,10 @@ export class LOTGenerator {
         const operator = this.mapSCLOperatorToLOT(binOp.operator);
         return `${left} ${operator} ${right}`;
       
+      case 'FunctionCall':
+        const funcCall = expression as any;
+        return `${funcCall.functionName}(${funcCall.arguments.map((arg: any) => this.generateExpression(arg)).join(', ')})`;
+      
       default:
         return 'UNKNOWN_EXPRESSION';
     }
@@ -388,5 +394,55 @@ export class LOTGenerator {
     };
 
     return operatorMap[sclOperator] || sclOperator;
+  }
+
+  private generateFunctionCall(functionCall: any, indent: string): string {
+    const functionName = functionCall.functionName;
+    const args = functionCall.arguments || [];
+    
+    // Handle specific PLC function calls
+    if (functionName === 'PUBLISHTOPIC') {
+      if (args.length >= 2) {
+        const topic = this.generateExpression(args[0]);
+        const data = this.generateExpression(args[1]);
+        let output = `${indent}PUBLISH TOPIC ${topic} WITH ${data}`;
+        
+        if (this.context.addExplanatoryComments) {
+          output += ` // SCL: PublishTopic(${topic}, ${data})`;
+        }
+        
+        return output;
+      }
+    }
+    
+    // Handle timer function calls (TON, TOF, TP)
+    if (functionName.toUpperCase().endsWith('TMR1S') || functionName.match(/^[A-Z_]+$/)) {
+      let output = `${indent}// Timer operation: ${functionName}(`;
+      for (let i = 0; i < args.length; i++) {
+        if (i > 0) output += ', ';
+        output += this.generateExpression(args[i]);
+      }
+      output += ')';
+      
+      if (this.context.addExplanatoryComments) {
+        output += ` // SCL timer function block call`;
+      }
+      
+      return output;
+    }
+    
+    // Generic function call
+    let output = `${indent}// Function call: ${functionName}(`;
+    for (let i = 0; i < args.length; i++) {
+      if (i > 0) output += ', ';
+      output += this.generateExpression(args[i]);
+    }
+    output += ')';
+    
+    if (this.context.addExplanatoryComments) {
+      output += ` // SCL: ${functionName}(...)`;
+    }
+    
+    return output;
   }
 }

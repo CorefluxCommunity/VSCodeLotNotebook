@@ -31,7 +31,8 @@ export class SCLLexer {
     'BOOL', 'BYTE', 'WORD', 'DWORD', 'LWORD',
     'SINT', 'INT', 'DINT', 'LINT', 'USINT', 'UINT', 'UDINT', 'ULINT',
     'REAL', 'LREAL', 'STRING', 'WSTRING', 'TIME', 'DATE',
-    'TRUE', 'FALSE', 'AND', 'OR', 'XOR', 'NOT', 'MOD'
+    'TRUE', 'FALSE', 'AND', 'OR', 'XOR', 'NOT', 'MOD',
+    'TON', 'TOF', 'TP' // Timer function blocks
   ]);
 
   constructor(text: string) {
@@ -170,6 +171,24 @@ export class SCLLexer {
       this.column++;
     }
     
+    // Check for time literals (T#1S, TIME#1S)
+    if ((value.toUpperCase() === 'T' || value.toUpperCase() === 'TIME') && 
+        this.pos < this.text.length && this.text[this.pos] === '#') {
+      value += this.text[this.pos]; // Add '#'
+      this.pos++;
+      this.column++;
+      
+      // Read the time value and unit
+      while (this.pos < this.text.length && 
+             (this.isAlphaNumeric(this.text[this.pos]) || this.text[this.pos] === '.')) {
+        value += this.text[this.pos];
+        this.pos++;
+        this.column++;
+      }
+      
+      return { type: 'STRING', value: value.toUpperCase(), line, column }; // Treat as string literal
+    }
+    
     const type = this.keywords.has(value.toUpperCase()) ? 'KEYWORD' : 'IDENTIFIER';
     return { type, value: value.toUpperCase(), line, column };
   }
@@ -263,10 +282,94 @@ export class SCLParser {
       return this.parseFunctionBlock();
     } else if (token.value === 'FUNCTION') {
       return this.parseFunctionDefinition();
+    } else if (token.value === 'VAR' || token.value === 'VAR_INPUT' || token.value === 'VAR_OUTPUT') {
+      // Handle standalone VAR blocks as implicit function blocks
+      return this.parseStandaloneVarBlock();
     } else {
+      // Try to parse as executable statements (for code like timer logic)
+      const statements = this.parseExecutableStatements();
+      if (statements.length > 0) {
+        // Wrap standalone executable code in an implicit function block
+        return {
+          type: 'FunctionBlock',
+          name: 'ImplicitMain',
+          inputVariables: [],
+          outputVariables: [],
+          localVariables: [],
+          body: statements
+        };
+      }
       this.advance(); // Skip unknown tokens
       return null;
     }
+  }
+
+  private parseStandaloneVarBlock(): FunctionBlock {
+    const inputVariables: VariableDeclaration[] = [];
+    const outputVariables: VariableDeclaration[] = [];
+    const localVariables: VariableDeclaration[] = [];
+
+    // Parse VAR blocks
+    while (this.check('VAR') || this.check('VAR_INPUT') || this.check('VAR_OUTPUT')) {
+      const varType = this.getCurrentToken().value;
+      this.advance(); // consume VAR keyword
+      
+      while (!this.check('END_VAR')) {
+        const scope = varType === 'VAR_INPUT' ? 'INPUT' : 
+                      varType === 'VAR_OUTPUT' ? 'OUTPUT' : 'LOCAL';
+        const variable = this.parseVariableDeclaration(scope);
+        if (variable) {
+          if (varType === 'VAR_INPUT') {
+            inputVariables.push(variable);
+          } else if (varType === 'VAR_OUTPUT') {
+            outputVariables.push(variable);
+          } else {
+            localVariables.push(variable);
+          }
+        }
+      }
+      
+      this.expect('END_VAR');
+    }
+
+    // Parse executable statements that follow
+    const body = this.parseExecutableStatements();
+
+    return {
+      type: 'FunctionBlock',
+      name: 'StandaloneVarBlock',
+      inputVariables,
+      outputVariables,
+      localVariables,
+      body
+    };
+  }
+
+  private parseExecutableStatements(): Statement[] {
+    const statements: Statement[] = [];
+    let lastPos = this.pos;
+    
+    while (!this.isAtEnd() && !this.check('END_FUNCTION_BLOCK') && !this.check('END_FUNCTION') && !this.check('TYPE') && !this.check('FUNCTION_BLOCK') && !this.check('FUNCTION')) {
+      try {
+        const stmt = this.parseStatement();
+        if (stmt) {
+          statements.push(stmt);
+        }
+        
+        // Safety check to prevent infinite loops
+        if (this.pos === lastPos) {
+          this.advance(); // Force advancement if no progress was made
+        }
+        lastPos = this.pos;
+        
+      } catch (error) {
+        // Skip problematic tokens
+        this.advance();
+        lastPos = this.pos;
+      }
+    }
+    
+    return statements;
   }
 
   private parseStructDefinition(): StructDefinition {
@@ -470,6 +573,9 @@ export class SCLParser {
       case 'WSTRING': dataType = 'WSTRING'; break;
       case 'TIME': dataType = 'TIME'; break;
       case 'DATE': dataType = 'DATE'; break;
+      case 'TON': dataType = 'TON'; break;
+      case 'TOF': dataType = 'TOF'; break;
+      case 'TP': dataType = 'TP'; break;
       default:
         dataType = 'STRING'; // Default fallback
     }
@@ -490,11 +596,59 @@ export class SCLParser {
     } else if (token.value === 'FOR') {
       return this.parseForLoop();
     } else if (token.type === 'IDENTIFIER') {
-      return this.parseAssignment();
+      // Look ahead to see if this is an assignment or function call
+      const nextToken = this.tokens[this.pos + 1];
+      if (nextToken && nextToken.value === ':=') {
+        return this.parseAssignment();
+      } else if (nextToken && nextToken.value === '(') {
+        return this.parseFunctionCallStatement();
+      } else {
+                 // Could be a member access assignment (e.g., tmr.IN := TRUE)
+         let lookahead = this.pos + 1;
+         while (lookahead < this.tokens.length && this.tokens[lookahead].value !== ';' && this.tokens[lookahead].value !== ':=') {
+           if (this.tokens[lookahead].value === ':=') {
+             return this.parseAssignment();
+           }
+           lookahead++; // Fix: actually increment lookahead
+           if (lookahead > this.pos + 10) break; // Safety limit
+         }
+         return this.parseAssignment(); // Default to assignment parsing
+      }
     } else {
       this.advance(); // Skip unknown statements
       return null;
     }
+  }
+
+  private parseFunctionCallStatement(): Statement {
+    const functionName = this.expectIdentifier();
+    this.expect('(');
+    
+    const args: Expression[] = [];
+    if (!this.check(')')) {
+      do {
+        // Handle named parameters (paramName := value) or positional (value)
+        if (this.tokens[this.pos + 1] && this.tokens[this.pos + 1].value === ':=') {
+          // Named parameter - skip the parameter name and :=
+          this.advance(); // parameter name
+          this.advance(); // :=
+          args.push(this.parseExpression());
+        } else {
+          // Positional parameter
+          args.push(this.parseExpression());
+        }
+      } while (this.match(','));
+    }
+    
+    this.expect(')');
+    this.expect(';');
+
+    return {
+      type: 'Statement',
+      statementType: 'FunctionCall',
+      functionName,
+      arguments: args
+    } as any; // Use any to bypass type checking temporarily
   }
 
   private parseIfStatement(): IfStatement {
@@ -563,10 +717,19 @@ export class SCLParser {
   }
 
   private parseAssignment(): Assignment {
+    let targetName = this.expectIdentifier();
+    
+    // Handle member access (e.g., tmr1s.IN)
+    if (this.check('.')) {
+      this.advance(); // consume '.'
+      const member = this.expectIdentifier();
+      targetName = `${targetName}.${member}`;
+    }
+    
     const target: VariableRef = {
       type: 'Expression',
       exprType: 'Variable',
-      name: this.expectIdentifier()
+      name: targetName
     };
     
     this.expect(':=');
@@ -672,6 +835,48 @@ export class SCLParser {
 
     if (this.getCurrentToken().type === 'IDENTIFIER') {
       const name = this.advance().value;
+      
+      // Check if this is a function call
+      if (this.check('(')) {
+        this.advance(); // consume '('
+        const args: Expression[] = [];
+        
+        if (!this.check(')')) {
+          do {
+            // Handle named parameters (paramName := value) or positional (value)
+            if (this.tokens[this.pos + 1] && this.tokens[this.pos + 1].value === ':=') {
+              // Named parameter - skip the parameter name and :=
+              this.advance(); // parameter name
+              this.advance(); // :=
+              args.push(this.parseExpression());
+            } else {
+              // Positional parameter
+              args.push(this.parseExpression());
+            }
+          } while (this.match(','));
+        }
+        
+        this.expect(')');
+        
+        return {
+          type: 'Expression',
+          exprType: 'FunctionCall',
+          functionName: name,
+          arguments: args
+        } as any; // Use any to bypass type checking temporarily
+      }
+      
+      // Check if this is a member access (e.g., tmr1s.Q)
+      if (this.check('.')) {
+        this.advance(); // consume '.'
+        const member = this.expectIdentifier();
+        return {
+          type: 'Expression',
+          exprType: 'Variable',
+          name: `${name}.${member}`
+        } as VariableRef;
+      }
+      
       return {
         type: 'Expression',
         exprType: 'Variable',

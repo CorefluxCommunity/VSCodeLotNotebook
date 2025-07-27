@@ -211,7 +211,7 @@
 			{
 				"command": "scl.translateCell",
 				"key": "ctrl+shift+t",
-				"when": "notebookCellType == code && (notebookCellLangId == scl || notebookCellLangId == lot)"
+				"when": "notebookCellType == code"
 			}
 		],
 		"notebooks": [
