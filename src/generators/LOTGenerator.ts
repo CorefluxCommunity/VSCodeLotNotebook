@@ -532,7 +532,8 @@ export class LOTGenerator {
 
   private mapSCLOperatorToLOT(sclOperator: string): string {
     const operatorMap: { [key: string]: string } = {
-      '=': '==',
+      '=': 'EQUALS',
+      '==': 'EQUALS',  // Handle both = and == from SCL
       '<>': '!=',
       'AND': 'AND',
       'OR': 'OR',

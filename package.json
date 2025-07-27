@@ -168,52 +168,9 @@
 				"command": "lot-notebook.new",
 				"title": "LOT Notebook: New LOT Notebook",
 				"category": "LOT Notebook"
-			},
-			{
-				"command": "scl.convertToLot",
-				"title": "→ LOT",
-				"category": "SCL",
-				"icon": "$(arrow-right)"
-			},
-			{
-				"command": "scl.convertFromLot",
-				"title": "→ SCL", 
-				"category": "SCL",
-				"icon": "$(arrow-left)"
-			},
-			{
-				"command": "scl.format",
-				"title": "Format SCL Code",
-				"category": "SCL"
-			},
-			{
-				"command": "scl.validate",
-				"title": "Validate SCL Syntax",
-				"category": "SCL"
-			},
-			{
-				"command": "scl.createModel",
-				"title": "Create SCL Model",
-				"category": "SCL"
-			},
-			{
-				"command": "scl.createAction",
-				"title": "Create SCL Action",
-				"category": "SCL"
-			},
-			{
-				"command": "scl.translateCell",
-				"title": "Translate Cell (SCL ↔ LOT)",
-				"category": "SCL"
 			}
 		],
-		"keybindings": [
-			{
-				"command": "scl.translateCell",
-				"key": "ctrl+shift+t",
-				"when": "notebookCellType == code"
-			}
-		],
+
 		"notebooks": [
 			{
 				"id": "lot-notebook",
@@ -264,18 +221,7 @@
 				],
 				"configuration": "./language-configuration.json"
 			},
-			{
-				"id": "scl",
-				"aliases": [
-					"SCL",
-					"Simplified Configuration Language",
-					"scl"
-				],
-				"extensions": [
-					".scl"
-				],
-				"configuration": "./language-configuration.json"
-			},
+
 			{
 				"id": "shellscript",
 				"aliases": [
@@ -308,11 +254,7 @@
 				"scopeName": "source.lot",
 				"path": "./syntaxes/lot.tmLanguage.json"
 			},
-			{
-				"language": "scl",
-				"scopeName": "source.scl",
-				"path": "./syntaxes/scl.tmLanguage.json"
-			},
+
 			{
 				"language": "terminal",
 				"scopeName": "source.terminal",

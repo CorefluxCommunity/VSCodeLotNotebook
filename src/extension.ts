@@ -1250,41 +1250,46 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   ));
 
-  // --- SCL Commands ---
+  // --- SCL Commands (HIDDEN - Keep code for later activation) ---
   
-  // Initialize translation handlers
-  const translationStatusProvider = new TranslationStatusProvider();
-  const languageTranslationHandler = new LanguageTranslationHandler();
-  context.subscriptions.push(translationStatusProvider);
-  context.subscriptions.push(languageTranslationHandler);
+  // TODO: Re-enable for onboarding procedures later
+  const enableSCLFeatures = false; // Set to true to re-enable SCL functionality
   
-  context.subscriptions.push(
-    vscode.commands.registerCommand('scl.convertToLot', SCLCommands.convertSclToLot)
-  );
-  
-  context.subscriptions.push(
-    vscode.commands.registerCommand('scl.convertFromLot', SCLCommands.convertLotToScl)
-  );
-  
-  context.subscriptions.push(
-    vscode.commands.registerCommand('scl.translateCell', LanguageTranslationHandler.translateCurrentCell)
-  );
-  
-  context.subscriptions.push(
-    vscode.commands.registerCommand('scl.format', SCLCommands.formatScl)
-  );
-  
-  context.subscriptions.push(
-    vscode.commands.registerCommand('scl.validate', SCLCommands.validateScl)
-  );
-  
-  context.subscriptions.push(
-    vscode.commands.registerCommand('scl.createModel', SCLCommands.createSclModel)
-  );
-  
-  context.subscriptions.push(
-    vscode.commands.registerCommand('scl.createAction', SCLCommands.createSclAction)
-  );
+  if (enableSCLFeatures) {
+    // Initialize translation handlers
+    const translationStatusProvider = new TranslationStatusProvider();
+    const languageTranslationHandler = new LanguageTranslationHandler();
+    context.subscriptions.push(translationStatusProvider);
+    context.subscriptions.push(languageTranslationHandler);
+    
+    context.subscriptions.push(
+      vscode.commands.registerCommand('scl.convertToLot', SCLCommands.convertSclToLot)
+    );
+    
+    context.subscriptions.push(
+      vscode.commands.registerCommand('scl.convertFromLot', SCLCommands.convertLotToScl)
+    );
+    
+    context.subscriptions.push(
+      vscode.commands.registerCommand('scl.translateCell', LanguageTranslationHandler.translateCurrentCell)
+    );
+    
+    context.subscriptions.push(
+      vscode.commands.registerCommand('scl.format', SCLCommands.formatScl)
+    );
+    
+    context.subscriptions.push(
+      vscode.commands.registerCommand('scl.validate', SCLCommands.validateScl)
+    );
+    
+    context.subscriptions.push(
+      vscode.commands.registerCommand('scl.createModel', SCLCommands.createSclModel)
+    );
+    
+    context.subscriptions.push(
+      vscode.commands.registerCommand('scl.createAction', SCLCommands.createSclAction)
+    );
+  }
 
   // ---> NEW: Register Apply Cell Update Command <---
   context.subscriptions.push(
@@ -1336,45 +1341,47 @@ export async function activate(context: vscode.ExtensionContext) {
   );
   context.subscriptions.push(lotNotebookCompletionProvider);
 
-  // Register SCL completion providers
-  const sclCompletionProvider = vscode.languages.registerCompletionItemProvider(
-    { 
-      scheme: 'file', 
-      language: 'scl',
-      pattern: '**/*.lotnb'  // SCL can be used in LOT notebook files
-    },
-    new SCLCompletionProvider(),
-    ' ', // Trigger on space
-    'D', // Trigger on D for DEFINE
-    'W', // Trigger on W for WITH
-    'A', // Trigger on A for ADD
-    'S', // Trigger on S for SET/STORE
-    'P', // Trigger on P for PUBLISH
-    'O', // Trigger on O for ON
-    'I', // Trigger on I for IF
-    'R', // Trigger on R for REPEAT
-    'M'  // Trigger on M for MODEL
-  );
-  context.subscriptions.push(sclCompletionProvider);
+  // SCL completion providers (HIDDEN - Keep code for later activation)
+  if (enableSCLFeatures) {
+    const sclCompletionProvider = vscode.languages.registerCompletionItemProvider(
+      { 
+        scheme: 'file', 
+        language: 'scl',
+        pattern: '**/*.lotnb'  // SCL can be used in LOT notebook files
+      },
+      new SCLCompletionProvider(),
+      ' ', // Trigger on space
+      'D', // Trigger on D for DEFINE
+      'W', // Trigger on W for WITH
+      'A', // Trigger on A for ADD
+      'S', // Trigger on S for SET/STORE
+      'P', // Trigger on P for PUBLISH
+      'O', // Trigger on O for ON
+      'I', // Trigger on I for IF
+      'R', // Trigger on R for REPEAT
+      'M'  // Trigger on M for MODEL
+    );
+    context.subscriptions.push(sclCompletionProvider);
 
-  const sclNotebookCompletionProvider = vscode.languages.registerCompletionItemProvider(
-    { 
-      scheme: 'vscode-notebook-cell',
-      language: 'scl'
-    },
-    new SCLCompletionProvider(),
-    ' ', // Trigger on space
-    'D', // Trigger on D for DEFINE
-    'W', // Trigger on W for WITH
-    'A', // Trigger on A for ADD
-    'S', // Trigger on S for SET/STORE
-    'P', // Trigger on P for PUBLISH
-    'O', // Trigger on O for ON
-    'I', // Trigger on I for IF
-    'R', // Trigger on R for REPEAT
-    'M'  // Trigger on M for MODEL
-  );
-  context.subscriptions.push(sclNotebookCompletionProvider);
+    const sclNotebookCompletionProvider = vscode.languages.registerCompletionItemProvider(
+      { 
+        scheme: 'vscode-notebook-cell',
+        language: 'scl'
+      },
+      new SCLCompletionProvider(),
+      ' ', // Trigger on space
+      'D', // Trigger on D for DEFINE
+      'W', // Trigger on W for WITH
+      'A', // Trigger on A for ADD
+      'S', // Trigger on S for SET/STORE
+      'P', // Trigger on P for PUBLISH
+      'O', // Trigger on O for ON
+      'I', // Trigger on I for IF
+      'R', // Trigger on R for REPEAT
+      'M'  // Trigger on M for MODEL
+    );
+    context.subscriptions.push(sclNotebookCompletionProvider);
+  }
 
   // Command to create a new LOT Notebook
   context.subscriptions.push(
