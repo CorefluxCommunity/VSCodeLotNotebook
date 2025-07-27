@@ -12,22 +12,22 @@ SCL is the structured text language used in PLCs for defining:
 
 ## Key Features
 
-### 🔄 Bidirectional Translation
-- Convert SCL to LOT for execution
-- Convert LOT back to SCL for easier editing
-- Automatic syntax validation and formatting
+### 🎓 Learning Bridge for Control Engineers
+- **Direct Translation**: See how your familiar SCL constructs map to LOT
+- **Concept Mapping**: STRUCT → MODEL, FUNCTION_BLOCK → ACTION, FUNCTION → RULE
+- **Logic Translation**: SCL assignments become LOT SET statements
+- **I/O Mapping**: VAR_INPUT becomes JSON extraction, VAR_OUTPUT becomes PUBLISH
 
-### 🎯 User-Friendly Syntax
-- Clear, readable structure
-- Built-in data transformation functions
-- Automatic database storage configuration
-- Template-based model and action creation
+### 🔧 Professional Development Tools
+- **Real SCL Syntax**: Industry-standard IEC 61131-3 constructs
+- **IntelliSense Support**: Autocompletion for SCL keywords and data types
+- **Syntax Highlighting**: Proper highlighting for PLC engineers
+- **Template Library**: Common SCL patterns (STRUCT, FUNCTION_BLOCK, etc.)
 
-### 🚀 Enhanced Productivity
-- IntelliSense autocompletion
-- Syntax highlighting
-- Error validation
-- Code formatting
+### 🌉 Technology Bridge
+- **From PLC to IoT**: Understand how control logic translates to IoT systems
+- **Familiar to Modern**: Bridge traditional automation with modern data flows
+- **Learning Tool**: Hands-on way to understand LOT concepts
 
 ## SCL Syntax Overview
 
@@ -104,15 +104,67 @@ END_FUNCTION
 
 ## Available Commands
 
-### SCL Translation Commands
-- **Convert SCL to LOT**: `scl.convertToLot` - Translates selected SCL cell to LOT
-- **Convert LOT to SCL**: `scl.convertFromLot` - Translates selected LOT cell to SCL
-- **Format SCL Code**: `scl.format` - Automatically formats SCL code with proper indentation
-- **Validate SCL Syntax**: `scl.validate` - Checks SCL syntax for errors
+### Learning Commands
+- **Convert SCL to LOT**: `scl.convertToLot` - See how your SCL translates to LOT concepts
+- **Convert LOT to SCL**: `scl.convertFromLot` - Understand LOT in terms of SCL
+- **Format SCL Code**: `scl.format` - Properly format your SCL code
+- **Validate SCL Syntax**: `scl.validate` - Check your SCL syntax
 
-### SCL Creation Commands
-- **Create SCL Model**: `scl.createModel` - Creates a new SCL model template
-- **Create SCL Action**: `scl.createAction` - Creates a new SCL action template
+### Template Commands  
+- **Create SCL STRUCT**: `scl.createModel` - Creates data structure templates
+- **Create SCL FUNCTION_BLOCK**: `scl.createAction` - Creates function block templates
+
+## Translation Mapping for Control Engineers
+
+This table shows how your familiar SCL concepts directly translate to LOT:
+
+| SCL Construct | LOT Equivalent | Purpose |
+|---------------|----------------|---------|
+| `TYPE name : STRUCT` | `DEFINE MODEL name` | Data structure definition |
+| `FUNCTION_BLOCK name` | `DEFINE ACTION name` | Processing logic with I/O |
+| `FUNCTION name : type` | `DEFINE RULE name` | Pure calculation function |
+| `VAR_INPUT` | `SET "var" WITH (GET JSON...)` | Input parameter handling |
+| `VAR_OUTPUT` | `PUBLISH TOPIC "..." WITH` | Output result publishing |
+| `variable := expression;` | `SET "variable" WITH (expression)` | Variable assignment |
+| `IF condition THEN` | `IF (condition) THEN` | Conditional logic |
+| `FOR i := 1 TO 10 DO` | `REPEAT ... UNTIL` | Loop constructs |
+
+### Example Translation:
+
+**SCL Code (what you know):**
+```scl
+TYPE TankData : STRUCT
+    level : REAL;
+    temperature : REAL;
+END_STRUCT
+END_TYPE
+
+FUNCTION_BLOCK PIDController
+VAR_INPUT
+    processValue : REAL;
+    setPoint : REAL;
+END_VAR
+VAR_OUTPUT
+    output : REAL;
+END_VAR
+BEGIN
+    output := setPoint - processValue;
+END_FUNCTION_BLOCK
+```
+
+**LOT Translation (what you'll learn):**
+```lot
+DEFINE MODEL TankData
+    ADD NUMBER "level"     // SCL: level : REAL
+    ADD NUMBER "temperature" // SCL: temperature : REAL
+
+DEFINE ACTION PIDController
+ON TOPIC "plc/call/pidcontroller" DO
+    SET "processValue" WITH (GET JSON "processValue" IN PAYLOAD AS STRING)
+    SET "setPoint" WITH (GET JSON "setPoint" IN PAYLOAD AS STRING)
+    SET "output" WITH (setPoint - processValue)
+    PUBLISH TOPIC "plc/output/pidcontroller/output" WITH {output}
+```
 
 ## How to Use
 

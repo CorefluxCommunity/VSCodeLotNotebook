@@ -67,32 +67,42 @@ export class SCLTranslator {
   
   /**
    * Parse SCL code and convert to LOT format
-   * NOTE: This is a bridge function - real SCL would need custom mapping to LOT
+   * This helps control engineers learn LOT by seeing direct translations
    */
   public static sclToLot(sclCode: string): string {
-    // For now, return a comment explaining the integration approach
-    return `(* SCL to LOT Integration *)
-(* This SCL code would be used in a PLC system that interfaces with LOT via MQTT *)
-(* The PLC would process data using SCL logic and publish results to MQTT topics *)
-(* that are consumed by LOT actions and models *)
+    const lines = sclCode.split('\n').map(line => line.trim()).filter(line => line);
+    const lotEntities: string[] = [];
+    
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      
+      if (line.startsWith('TYPE ') && line.includes(':')) {
+        const struct = this.parseStruct(lines, i);
+        lotEntities.push(this.structToLot(struct.entity));
+        i = struct.nextIndex;
+      } else if (line.startsWith('FUNCTION_BLOCK ')) {
+        const fb = this.parseFunctionBlock(lines, i);
+        lotEntities.push(this.functionBlockToLot(fb.entity));
+        i = fb.nextIndex;
+      } else if (line.startsWith('FUNCTION ')) {
+        const func = this.parseFunction(lines, i);
+        lotEntities.push(this.functionToLot(func.entity));
+        i = func.nextIndex;
+      } else {
+        i++;
+      }
+    }
+    
+    if (lotEntities.length === 0) {
+      return `// No translatable SCL constructs found
+// Please use TYPE, FUNCTION_BLOCK, or FUNCTION definitions`;
+    }
+    
+    return `// SCL to LOT Translation for Control Engineers
+// This shows how your familiar SCL concepts map to LOT
 
-// Original SCL Code:
-${sclCode.split('\n').map(line => `// ${line}`).join('\n')}
-
-// Corresponding LOT integration would define:
-// - MQTT topics for data exchange
-// - LOT actions to process PLC data
-// - LOT models to structure the data flow
-
-DEFINE MODEL PlcIntegration WITH TOPIC "plc/data/+"
-    ADD "timestamp" WITH TIMESTAMP "UTC"
-    ADD "plcData" WITH PAYLOAD AS STRING
-    ADD "processedBy" WITH "SCL_FUNCTION_BLOCK"
-
-DEFINE ACTION ProcessPlcData
-ON TOPIC "plc/data/+" DO
-    // Process data received from PLC running SCL code
-    PUBLISH TOPIC "lot/processed/data" WITH PAYLOAD`;
+${lotEntities.join('\n\n')}`;
   }
 
   /**
@@ -127,6 +137,168 @@ ON TOPIC "plc/data/+" DO
   // ============================================================================
   // SCL Parsing Methods
   // ============================================================================
+
+  private static parseStruct(lines: string[], startIndex: number): { entity: SCLStruct; nextIndex: number } {
+    const typeLine = lines[startIndex];
+    const match = typeLine.match(/TYPE\s+(\w+)\s*:/);
+    
+    if (!match) {
+      throw new Error(`Invalid TYPE definition: ${typeLine}`);
+    }
+
+    const struct: SCLStruct = {
+      name: match[1],
+      fields: [],
+    };
+
+    let i = startIndex + 1;
+    // Skip STRUCT keyword
+    if (i < lines.length && lines[i] === 'STRUCT') {
+      i++;
+    }
+
+    // Parse fields
+    while (i < lines.length && !lines[i].startsWith('END_STRUCT')) {
+      const line = lines[i];
+      const fieldMatch = line.match(/(\w+)\s*:\s*([\w\[\]]+);?/);
+      if (fieldMatch) {
+        const fieldType = fieldMatch[2].includes('[') ? 'ARRAY' : fieldMatch[2];
+        struct.fields.push({
+          type: fieldType as any,
+          name: fieldMatch[1],
+        });
+      }
+      i++;
+    }
+
+    // Skip END_STRUCT and END_TYPE
+    while (i < lines.length && (lines[i].startsWith('END_') || lines[i].trim() === '')) {
+      i++;
+    }
+
+    return { entity: struct, nextIndex: i };
+  }
+
+  private static parseFunctionBlock(lines: string[], startIndex: number): { entity: SCLFunctionBlock; nextIndex: number } {
+    const fbLine = lines[startIndex];
+    const match = fbLine.match(/FUNCTION_BLOCK\s+(\w+)/);
+    
+    if (!match) {
+      throw new Error(`Invalid FUNCTION_BLOCK definition: ${fbLine}`);
+    }
+
+    const fb: SCLFunctionBlock = {
+      name: match[1],
+      inputs: [],
+      outputs: [],
+      variables: [],
+      body: [],
+      trigger: { type: 'CALL', value: 'manual' },
+      conditions: [],
+      publications: [],
+      loops: [],
+    };
+
+    let i = startIndex + 1;
+    let currentSection = '';
+    
+    while (i < lines.length && !lines[i].startsWith('END_FUNCTION_BLOCK')) {
+      const line = lines[i];
+      
+      if (line === 'VAR_INPUT') {
+        currentSection = 'input';
+      } else if (line === 'VAR_OUTPUT') {
+        currentSection = 'output';
+      } else if (line === 'VAR') {
+        currentSection = 'var';
+      } else if (line === 'BEGIN') {
+        currentSection = 'body';
+      } else if (line === 'END_VAR') {
+        currentSection = '';
+      } else if (currentSection === 'input') {
+        const varMatch = line.match(/(\w+)\s*:\s*(\w+);?/);
+        if (varMatch) {
+          fb.inputs.push({
+            name: varMatch[1],
+            type: varMatch[2] as any,
+          });
+        }
+      } else if (currentSection === 'output') {
+        const varMatch = line.match(/(\w+)\s*:\s*(\w+);?/);
+        if (varMatch) {
+          fb.outputs.push({
+            name: varMatch[1],
+            type: varMatch[2] as any,
+          });
+        }
+      } else if (currentSection === 'var') {
+        const varMatch = line.match(/(\w+)\s*:\s*(\w+);?/);
+        if (varMatch) {
+          fb.variables.push({
+            name: varMatch[1],
+            expression: `INIT_${varMatch[2]}`,
+          });
+        }
+      } else if (currentSection === 'body' && line.trim()) {
+        fb.body.push(line);
+      }
+      
+      i++;
+    }
+
+    if (i < lines.length) i++; // Skip END_FUNCTION_BLOCK
+
+    return { entity: fb, nextIndex: i };
+  }
+
+  private static parseFunction(lines: string[], startIndex: number): { entity: any; nextIndex: number } {
+    const funcLine = lines[startIndex];
+    const match = funcLine.match(/FUNCTION\s+(\w+)\s*:\s*(\w+)/);
+    
+    if (!match) {
+      throw new Error(`Invalid FUNCTION definition: ${funcLine}`);
+    }
+
+    const func = {
+      name: match[1],
+      returnType: match[2],
+      inputs: [] as any[],
+      body: [] as string[],
+    };
+
+    let i = startIndex + 1;
+    let currentSection = '';
+    
+    while (i < lines.length && !lines[i].startsWith('END_FUNCTION')) {
+      const line = lines[i];
+      
+      if (line === 'VAR_INPUT') {
+        currentSection = 'input';
+      } else if (line === 'VAR') {
+        currentSection = 'var';
+      } else if (line === 'BEGIN') {
+        currentSection = 'body';
+      } else if (line === 'END_VAR') {
+        currentSection = '';
+      } else if (currentSection === 'input') {
+        const varMatch = line.match(/(\w+)\s*:\s*(\w+);?/);
+        if (varMatch) {
+          func.inputs.push({
+            name: varMatch[1],
+            type: varMatch[2],
+          });
+        }
+      } else if (currentSection === 'body' && line.trim()) {
+        func.body.push(line);
+      }
+      
+      i++;
+    }
+
+    if (i < lines.length) i++; // Skip END_FUNCTION
+
+    return { entity: func, nextIndex: i };
+  }
 
   private static parseModel(lines: string[], startIndex: number): { entity: SCLStruct; nextIndex: number } {
     const defineLine = lines[startIndex];
@@ -380,6 +552,125 @@ ON TOPIC "plc/data/+" DO
   // ============================================================================
   // SCL to LOT Conversion Methods
   // ============================================================================
+
+  private static structToLot(struct: SCLStruct): string {
+    const sclTypes: { [key: string]: string } = {
+      'BOOL': 'BOOLEAN',
+      'INT': 'NUMBER',
+      'DINT': 'NUMBER', 
+      'REAL': 'NUMBER',
+      'LREAL': 'NUMBER',
+      'STRING': 'STRING',
+      'WORD': 'NUMBER',
+      'DWORD': 'NUMBER',
+      'ARRAY': 'ARRAY'
+    };
+
+    let lot = `// SCL STRUCT "${struct.name}" becomes LOT MODEL
+DEFINE MODEL ${struct.name}`;
+
+    for (const field of struct.fields) {
+      const lotType = sclTypes[field.type] || 'OBJECT';
+      lot += `\n    ADD ${lotType} "${field.name}"`;
+      
+      // Add explanatory comment
+      lot += ` // SCL: ${field.name} : ${field.type}`;
+    }
+
+    // Add timestamp for data tracking (common IoT pattern)
+    lot += `\n    ADD "timestamp" WITH TIMESTAMP "UTC" // Auto-added for data tracking`;
+
+    return lot;
+  }
+
+  private static functionBlockToLot(fb: SCLFunctionBlock): string {
+    let lot = `// SCL FUNCTION_BLOCK "${fb.name}" becomes LOT ACTION
+DEFINE ACTION ${fb.name}`;
+
+    // Convert function block to action with manual trigger or topic trigger
+    if (fb.inputs.some(input => input.name.toLowerCase().includes('mqtt') || input.name.toLowerCase().includes('topic'))) {
+      lot += `\nON TOPIC "plc/${fb.name.toLowerCase()}/+" DO`;
+    } else {
+      lot += `\nON TOPIC "plc/call/${fb.name.toLowerCase()}" DO`;
+    }
+
+    // Convert SCL variables to LOT SET statements
+    for (const input of fb.inputs) {
+      lot += `\n    // SCL INPUT: ${input.name} : ${input.type}`;
+      lot += `\n    SET "${input.name}" WITH (GET JSON "${input.name}" IN PAYLOAD AS STRING)`;
+    }
+
+    // Add SCL logic as comments and LOT equivalents
+    lot += `\n    \n    // Original SCL logic:`;
+    for (const line of fb.body) {
+      lot += `\n    // ${line}`;
+      
+      // Try to convert some basic SCL constructs to LOT
+      const lotEquivalent = this.convertSclLogicToLot(line);
+      if (lotEquivalent) {
+        lot += `\n    ${lotEquivalent}`;
+      }
+    }
+
+    // Convert outputs to publications
+    if (fb.outputs.length > 0) {
+      lot += `\n    \n    // Publish outputs (SCL VAR_OUTPUT becomes LOT PUBLISH)`;
+      for (const output of fb.outputs) {
+        lot += `\n    PUBLISH TOPIC "plc/output/${fb.name.toLowerCase()}/${output.name}" WITH {${output.name}}`;
+        lot += ` // SCL OUTPUT: ${output.name} : ${output.type}`;
+      }
+    }
+
+    return lot;
+  }
+
+  private static functionToLot(func: any): string {
+    let lot = `// SCL FUNCTION "${func.name}" becomes LOT RULE
+DEFINE RULE Calculate_${func.name}`;
+
+    // Convert function parameters to conditions
+    const inputConditions = func.inputs.map((input: any) => `{${input.name}} IS NOT NULL`).join(' AND ');
+    
+    lot += `\nIF ${inputConditions} THEN`;
+    
+    // Add function logic as LOT calculation
+    lot += `\n    // Original SCL FUNCTION logic:`;
+    for (const line of func.body) {
+      lot += `\n    // ${line}`;
+    }
+    
+    // Add return value handling
+    lot += `\n    SET "result_${func.name}" WITH (CALC_${func.name}({${func.inputs.map((i: any) => i.name).join(', ')}}))`;
+    lot += `\n    // Returns: ${func.returnType}`;
+
+    return lot;
+  }
+
+  private static convertSclLogicToLot(sclLine: string): string | null {
+    const line = sclLine.trim();
+    
+    // Convert SCL assignment to LOT SET
+    const assignMatch = line.match(/(\w+)\s*:=\s*(.+);?/);
+    if (assignMatch) {
+      const variable = assignMatch[1];
+      const expression = assignMatch[2];
+      return `SET "${variable}" WITH (${expression.replace(/;$/, '')})`;
+    }
+    
+    // Convert SCL IF to LOT IF
+    if (line.startsWith('IF ') && line.includes(' THEN')) {
+      const condition = line.replace(/^IF\s+/, '').replace(/\s+THEN.*$/, '');
+      return `IF (${condition}) THEN`;
+    }
+    
+    // Convert SCL function calls
+    const funcCallMatch = line.match(/(\w+)\s*\(/);
+    if (funcCallMatch) {
+      return `// Function call: ${line} - implement as LOT calculation`;
+    }
+    
+    return null;
+  }
 
   private static modelToLot(model: SCLStruct): string {
     let lot = `DEFINE MODEL ${model.name}`;
