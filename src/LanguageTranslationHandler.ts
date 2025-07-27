@@ -6,44 +6,73 @@ import { SCLTranslator } from './SCLTranslator';
 
 export class LanguageTranslationHandler {
   private disposables: vscode.Disposable[] = [];
+  private cellLanguageMap = new Map<string, string>(); // Track cell languages
+  private pollTimer: NodeJS.Timeout | undefined;
 
   constructor() {
     this.setupLanguageChangeHandler();
   }
 
   private setupLanguageChangeHandler(): void {
-    // Listen for language changes in notebook cells
-    const disposable = vscode.workspace.onDidChangeTextDocument(async (event) => {
-      // Check if this is a notebook document
-      if (event.document.uri.scheme !== 'vscode-notebook-cell') {
-        return;
+    // Start polling for language changes every 500ms
+    this.pollTimer = setInterval(() => {
+      this.checkForLanguageChanges();
+    }, 500);
+
+    // Track when notebooks open
+    const disposable1 = vscode.window.onDidChangeActiveNotebookEditor(async (editor) => {
+      if (editor) {
+        // Initialize language map for all cells
+        for (const cell of editor.notebook.getCells()) {
+          this.cellLanguageMap.set(cell.document.uri.toString(), cell.document.languageId);
+        }
       }
-
-      // Get the notebook document
-      const notebookDocument = vscode.workspace.notebookDocuments.find(nb => 
-        nb.getCells().some(cell => cell.document === event.document)
-      );
-
-      if (!notebookDocument) {
-        return;
-      }
-
-      // Find the cell that was changed
-      const cell = notebookDocument.getCells().find(cell => cell.document === event.document);
-      if (!cell) {
-        return;
-      }
-
-      // Check if this was a language change (no content changes, just language metadata)
-      if (event.contentChanges.length > 0) {
-        return; // This was a content change, not a language change
-      }
-
-      // We need to detect language changes differently since onDidChangeTextDocument
-      // doesn't fire for language changes. Let's use a different approach.
     });
 
-    this.disposables.push(disposable);
+    this.disposables.push(disposable1);
+  }
+
+  private async checkForLanguageChanges(): Promise<void> {
+    const activeEditor = vscode.window.activeNotebookEditor;
+    if (!activeEditor) {
+      return;
+    }
+
+    for (const cell of activeEditor.notebook.getCells()) {
+      const cellUri = cell.document.uri.toString();
+      const currentLanguage = cell.document.languageId;
+      const previousLanguage = this.cellLanguageMap.get(cellUri);
+
+      if (previousLanguage && previousLanguage !== currentLanguage) {
+        // Language changed!
+        await this.handleLanguageChange(cell, previousLanguage, currentLanguage);
+      }
+
+      // Update the map
+      this.cellLanguageMap.set(cellUri, currentLanguage);
+    }
+  }
+
+  private async handleLanguageChange(cell: vscode.NotebookCell, oldLanguage: string, newLanguage: string): Promise<void> {
+    const content = cell.document.getText().trim();
+    
+    if (!content) {
+      return; // Don't translate empty cells
+    }
+
+    // Check if we should translate
+    let shouldTranslate = false;
+    
+    if (oldLanguage === 'scl' && newLanguage === 'lot' && LanguageTranslationHandler.isSCLCode(content)) {
+      shouldTranslate = true;
+    } else if (oldLanguage === 'lot' && newLanguage === 'scl' && LanguageTranslationHandler.isLOTCode(content)) {
+      shouldTranslate = true;
+    }
+
+    if (shouldTranslate) {
+      console.log(`Language changed from ${oldLanguage} to ${newLanguage}, translating...`);
+      await LanguageTranslationHandler.handleLanguageSwitch(cell, newLanguage as 'lot' | 'scl');
+    }
   }
 
   // Alternative approach: Handle explicit language switching
@@ -86,28 +115,14 @@ export class LanguageTranslationHandler {
 
   private static async replaceCell(cell: vscode.NotebookCell, newContent: string, newLanguage: string): Promise<void> {
     try {
-      const notebook = cell.notebook;
-      const cellIndex = notebook.getCells().indexOf(cell);
-      
-      if (cellIndex === -1) {
-        return;
-      }
-
-      // Create new cell data with translated content
-      const newCellData = new vscode.NotebookCellData(
-        vscode.NotebookCellKind.Code,
-        newContent,
-        newLanguage
-      );
-
-      // Replace the cell
+      // Just replace the content, the language is already set by the user clicking the selector
       const edit = new vscode.WorkspaceEdit();
-      const notebookEdit = new vscode.NotebookEdit(
-        new vscode.NotebookRange(cellIndex, cellIndex + 1),
-        [newCellData]
+      const fullRange = new vscode.Range(
+        0, 0,
+        cell.document.lineCount - 1,
+        cell.document.lineAt(cell.document.lineCount - 1).text.length
       );
-      edit.set(notebook.uri, [notebookEdit]);
-      
+      edit.replace(cell.document.uri, fullRange, newContent);
       await vscode.workspace.applyEdit(edit);
 
       // Show success message
@@ -154,6 +169,9 @@ export class LanguageTranslationHandler {
   }
 
   public dispose(): void {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+    }
     this.disposables.forEach(d => d.dispose());
   }
 }

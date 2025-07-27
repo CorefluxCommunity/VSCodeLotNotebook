@@ -1252,9 +1252,11 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // --- SCL Commands ---
   
-  // Initialize translation status provider
+  // Initialize translation handlers
   const translationStatusProvider = new TranslationStatusProvider();
+  const languageTranslationHandler = new LanguageTranslationHandler();
   context.subscriptions.push(translationStatusProvider);
+  context.subscriptions.push(languageTranslationHandler);
   
   context.subscriptions.push(
     vscode.commands.registerCommand('scl.convertToLot', SCLCommands.convertSclToLot)
