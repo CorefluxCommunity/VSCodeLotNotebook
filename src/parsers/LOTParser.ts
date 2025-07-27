@@ -393,7 +393,7 @@ export class LOTParser {
       } else if (token.value === ')' || token.value === '}') {
         parenCount--;
         if (parenCount < 0) break;
-      } else if (parenCount === 0 && (this.check('SET') || this.check('PUBLISH') || this.check('IF') || this.check('DEFINE'))) {
+      } else if (parenCount === 0 && (this.check('SET') || this.check('PUBLISH') || this.check('IF') || this.check('DEFINE') || this.check('ELSE') || this.check('END_IF'))) {
         break;
       }
       
@@ -422,7 +422,7 @@ export class LOTParser {
     
     // Parse data expression
     let data = '';
-    while (!this.isAtEnd() && !this.check('SET') && !this.check('PUBLISH') && !this.check('IF') && !this.check('DEFINE')) {
+    while (!this.isAtEnd() && !this.check('SET') && !this.check('PUBLISH') && !this.check('IF') && !this.check('DEFINE') && !this.check('ELSE') && !this.check('END_IF')) {
       data += this.getCurrentToken().value + ' ';
       this.advance();
     }
