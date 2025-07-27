@@ -1219,4 +1219,68 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
     terminal.show();
     terminal.sendText(code, true);
   }
+
+  // --- Public Connection Management Methods ---
+
+  /**
+   * Disconnect from the current MQTT broker
+   */
+  public async disconnect(): Promise<void> {
+    await this._disconnectMqtt();
+    this._clearAllCellStates();
+  }
+
+  /**
+   * Connect to an MQTT broker with credentials
+   */
+  public async connectWithCredentials(brokerUrl: string, username?: string, password?: string): Promise<void> {
+    // Disconnect first if already connected
+    if (this._connected) {
+      await this._disconnectMqtt();
+    }
+
+    // Update credentials
+    await this._context.secrets.store('mqttBrokerUrl', brokerUrl);
+    
+    if (username) {
+      await this._context.secrets.store('mqttUsername', username);
+    } else {
+      await this._context.secrets.delete('mqttUsername');
+    }
+    
+    if (password) {
+      await this._context.secrets.store('mqttPassword', password);
+    } else {
+      await this._context.secrets.delete('mqttPassword');
+    }
+
+    // Emit connecting state
+    this.emit('connecting');
+
+    // Connect with new credentials
+    try {
+      const success = await this._connectMqtt();
+      if (!success) {
+        vscode.window.showErrorMessage('Failed to connect to MQTT broker.');
+      }
+    } catch (error) {
+      console.error('Connection error:', error);
+      vscode.window.showErrorMessage(`Failed to connect: ${error}`);
+      this.emit('disconnected');
+    }
+  }
+
+  /**
+   * Get current connection status
+   */
+  public isConnected(): boolean {
+    return this._connected;
+  }
+
+  /**
+   * Get current broker URL
+   */
+  public getCurrentBrokerUrl(): string | null {
+    return this.currentBrokerUrl;
+  }
 }

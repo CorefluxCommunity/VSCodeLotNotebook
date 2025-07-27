@@ -57,8 +57,8 @@ export class OnboardingCommands {
 
   public async connectBroker(): Promise<void> {
     try {
-      // Use existing connection dialog
-      await vscode.commands.executeCommand('coreflux.changeBrokerCredentials');
+      // Use the new broker connection dialog
+      await vscode.commands.executeCommand('coreflux.handleBrokerStatusClick');
       
       // The actual connection success will be detected by the existing MQTT connection logic
       // which should call telemetryService.emitBrokerConnectedEvent and complete the step

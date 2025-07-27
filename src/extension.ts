@@ -17,6 +17,7 @@ import { TranslationStatusProvider } from './TranslationStatusProvider';
 import { TelemetryService } from './TelemetryService';
 import { OnboardingService } from './OnboardingService';
 import { OnboardingCommands } from './OnboardingCommands';
+import { BrokerConnectionManager } from './BrokerConnectionManager';
 
 const payloadMap = new Map<string, string>();
 let corefluxEntitiesProvider: CorefluxEntitiesProvider;
@@ -34,7 +35,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // --- Status Bar Item ---
   connectionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-  connectionStatusBarItem.command = 'lot-notebook.changeCredentials';
+  connectionStatusBarItem.command = 'coreflux.handleBrokerStatusClick';
   context.subscriptions.push(connectionStatusBarItem);
   updateStatusBar('disconnected'); // Initial state
 
@@ -161,20 +162,10 @@ export async function activate(context: vscode.ExtensionContext) {
   });
   context.subscriptions.push(createNotebookCommand);
 
+  // Legacy credentials command - now handled by BrokerConnectionManager
   const changeCredsCommand = vscode.commands.registerCommand(
     'lot-notebook.changeCredentials',
-    async () => {
-      try {
-        await changeBrokerCredentials(context);
-        vscode.window.showInformationMessage('MQTT credentials updated. Connection will be attempted on next action or reconnect.');
-        // Force disconnect if already connected, so next action reconnects with new creds
-        await controller.disconnectAndReconnect(); // Force disconnect/reconnect attempt now
-
-      } catch (err: any) {
-        vscode.window.showErrorMessage(`Failed to change credentials: ${err.message}`);
-        // Status bar update will happen via disconnect event if connection fails
-      }
-    }
+    () => brokerConnectionManager.showConnectionDialog()
   );
   
   context.subscriptions.push(changeCredsCommand);
@@ -186,6 +177,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
   controller = new LOTController(context, topicProvider, payloadMap, corefluxEntitiesProvider);
   context.subscriptions.push(controller);
+
+  // --- Broker Connection Manager ---
+  const brokerConnectionManager = BrokerConnectionManager.getInstance(controller);
 
   // --- SCL Controller ---
   sclController = new SCLController(controller);
@@ -1460,6 +1454,15 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('coreflux.setupGitRepo', () => onboardingCommands.setupGitRepo())
   );
 
+  // --- Broker Connection Commands ---
+  context.subscriptions.push(
+    vscode.commands.registerCommand('coreflux.handleBrokerStatusClick', () => brokerConnectionManager.handleStatusBarClick())
+  );
+  
+  context.subscriptions.push(
+    vscode.commands.registerCommand('coreflux.disconnectBroker', () => brokerConnectionManager.disconnect())
+  );
+
 
   // Controller is already created and registered earlier in the activation
 
@@ -1520,15 +1523,15 @@ function updateStatusBar(status: 'connected' | 'disconnected' | 'connecting', br
   if (status === 'connected') {
     const urlToShow = brokerUrl ? ` to ${brokerUrl}` : '';
     connectionStatusBarItem.text = `$(vm-connect) MQTT: Connected${urlToShow}`;
-    connectionStatusBarItem.tooltip = `Connected to MQTT broker: ${brokerUrl || 'Unknown'}\nClick to change credentials.`;
+    connectionStatusBarItem.tooltip = `Connected to MQTT broker: ${brokerUrl || 'Unknown'}\nClick to disconnect or change broker.`;
     connectionStatusBarItem.backgroundColor = undefined;
   } else if (status === 'disconnected') {
     connectionStatusBarItem.text = `$(vm-disconnected) MQTT: Disconnected`;
-    connectionStatusBarItem.tooltip = 'MQTT broker disconnected. Click to change credentials.';
+    connectionStatusBarItem.tooltip = 'MQTT broker disconnected. Click to connect to a broker.';
     connectionStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
   } else { // connecting
     connectionStatusBarItem.text = `$(sync~spin) MQTT: Connecting...`;
-    connectionStatusBarItem.tooltip = `Attempting to connect to MQTT broker...\nClick to change credentials.`;
+    connectionStatusBarItem.tooltip = `Attempting to connect to MQTT broker...\nClick to cancel or change broker.`;
     connectionStatusBarItem.backgroundColor = undefined;
   }
   connectionStatusBarItem.show();

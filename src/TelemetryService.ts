@@ -80,7 +80,7 @@ export class TelemetryService {
       guid = uuidv4();
       this.context.globalState.update('telemetry.guid', guid);
     }
-    return guid;
+    return guid!; // We know it's defined after the if check
   }
 
   public isTelemetryEnabled(): boolean {
