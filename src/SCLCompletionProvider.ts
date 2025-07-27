@@ -14,15 +14,22 @@ export class SCLCompletionProvider implements vscode.CompletionItemProvider {
     const currentIndent = linePrefix.match(/^\s*/)?.[0] || '';
     const items: vscode.CompletionItem[] = [];
 
-    // If the cell is completely empty or starting new line, provide DEFINE
+    // If the cell is completely empty or starting new line, provide SCL constructs
     if (document.getText().trim() === '' || linePrefix.trim() === '') {
-      const defineItem = new vscode.CompletionItem('DEFINE', vscode.CompletionItemKind.Keyword);
-      defineItem.detail = 'Start a new SCL definition';
-      defineItem.documentation = new vscode.MarkdownString('Start a new SCL definition with DEFINE keyword');
-      defineItem.insertText = new vscode.SnippetString('DEFINE ${1|MODEL,ACTION,ROUTE,RULE|} ${2:name}');
-      defineItem.sortText = '0';
-      defineItem.preselect = true;
-      items.push(defineItem);
+      const structItem = new vscode.CompletionItem('STRUCT', vscode.CompletionItemKind.Keyword);
+      structItem.detail = 'Define a data structure';
+      structItem.documentation = new vscode.MarkdownString('Define a structured data type');
+      structItem.insertText = new vscode.SnippetString('TYPE ${1:StructName} :\nSTRUCT\n    ${2:fieldName} : ${3|BOOL,INT,REAL,STRING|};$0\nEND_STRUCT\nEND_TYPE');
+      structItem.sortText = '0';
+      structItem.preselect = true;
+      items.push(structItem);
+
+      const fbItem = new vscode.CompletionItem('FUNCTION_BLOCK', vscode.CompletionItemKind.Keyword);
+      fbItem.detail = 'Define a function block';
+      fbItem.documentation = new vscode.MarkdownString('Define a function block with inputs, outputs, and logic');
+      fbItem.insertText = new vscode.SnippetString('FUNCTION_BLOCK ${1:BlockName}\nVAR_INPUT\n    ${2:inputName} : ${3|BOOL,INT,REAL,STRING|};\nEND_VAR\n\nVAR_OUTPUT\n    ${4:outputName} : ${5|BOOL,INT,REAL,STRING|};\nEND_VAR\n\nBEGIN\n    $0\nEND_FUNCTION_BLOCK');
+      fbItem.sortText = '1';
+      items.push(fbItem);
     }
 
     // DEFINE MODEL completions
@@ -74,41 +81,50 @@ export class SCLCompletionProvider implements vscode.CompletionItemProvider {
   private getModelTemplates(): vscode.CompletionItem[] {
     const templates: vscode.CompletionItem[] = [];
 
-    // Basic Model Template
-    const basicModel = new vscode.CompletionItem('Basic Model', vscode.CompletionItemKind.Snippet);
-    basicModel.detail = 'Basic model with fields';
-    basicModel.insertText = new vscode.SnippetString(
-      `DEFINE MODEL \${1:ModelName} WITH TOPIC "\${2:topic}"
-    ADD STRING "\${3:fieldName}"
-    ADD OBJECT "\${4:payload}"`
+    // Basic STRUCT Template
+    const basicStruct = new vscode.CompletionItem('Basic STRUCT', vscode.CompletionItemKind.Snippet);
+    basicStruct.detail = 'Basic data structure';
+    basicStruct.insertText = new vscode.SnippetString(
+      `TYPE \${1:StructName} :
+STRUCT
+    \${2:fieldName} : \${3|BOOL,INT,DINT,REAL,STRING|};
+    \${4:anotherField} : \${5|BOOL,INT,DINT,REAL,STRING|};
+END_STRUCT
+END_TYPE`
     );
-    templates.push(basicModel);
+    templates.push(basicStruct);
 
-    // Kafka Message Model Template
-    const kafkaModel = new vscode.CompletionItem('Kafka Message Model', vscode.CompletionItemKind.Snippet);
-    kafkaModel.detail = 'Standard Kafka message model';
-    kafkaModel.insertText = new vscode.SnippetString(
-      `DEFINE MODEL \${1:KafkaMessage} COLLAPSED
-    ADD STRING "componentId"
-    ADD STRING "topic"
-    ADD OBJECT "payload"`
+    // MQTT Message STRUCT Template
+    const mqttStruct = new vscode.CompletionItem('MQTT Message STRUCT', vscode.CompletionItemKind.Snippet);
+    mqttStruct.detail = 'MQTT message data structure';
+    mqttStruct.insertText = new vscode.SnippetString(
+      `TYPE \${1:MqttMessage} :
+STRUCT
+    topic : STRING[200];
+    payload : STRING[1000];
+    qos : INT;
+    retain : BOOL;
+END_STRUCT
+END_TYPE`
     );
-    templates.push(kafkaModel);
+    templates.push(mqttStruct);
 
-    // Machine Data Model Template
-    const machineModel = new vscode.CompletionItem('Machine Data Model', vscode.CompletionItemKind.Snippet);
-    machineModel.detail = 'Model for machine/sensor data with database storage';
-    machineModel.insertText = new vscode.SnippetString(
-      `DEFINE MODEL \${1:MachineData} WITH TOPIC "\${2:Simulator/Machine/+/Data}"
-    ADD "energy" WITH TOPIC "raw_data/+" AS TRIGGER
-    ADD "device_name" WITH REPLACE "+" WITH TOPIC POSITION 2 IN "+"
-    ADD "energy_wh" WITH (energy * 1000)
-    ADD "production_status" WITH (IF energy > 5 THEN "active" ELSE "inactive")
-    ADD "timestamp" WITH TIMESTAMP "UTC"
-    STORE IN "\${3:mongo_route}"
-        WITH TABLE "\${4:MachineProductionData}"`
+    // Sensor Data STRUCT Template
+    const sensorStruct = new vscode.CompletionItem('Sensor Data STRUCT', vscode.CompletionItemKind.Snippet);
+    sensorStruct.detail = 'Sensor data structure with validation';
+    sensorStruct.insertText = new vscode.SnippetString(
+      `TYPE \${1:SensorData} :
+STRUCT
+    temperature : REAL;
+    humidity : REAL;
+    pressure : REAL;
+    timestamp : DATE_AND_TIME;
+    sensorId : STRING[50];
+    isValid : BOOL;
+END_STRUCT
+END_TYPE`
     );
-    templates.push(machineModel);
+    templates.push(sensorStruct);
 
     return templates;
   }
@@ -116,17 +132,35 @@ export class SCLCompletionProvider implements vscode.CompletionItemProvider {
   private getActionTemplates(): vscode.CompletionItem[] {
     const templates: vscode.CompletionItem[] = [];
 
-    // Basic Topic Action
-    const topicAction = new vscode.CompletionItem('Topic-based Action', vscode.CompletionItemKind.Snippet);
-    topicAction.detail = 'Action triggered by topic message';
-    topicAction.insertText = new vscode.SnippetString(
-      `DEFINE ACTION \${1:ActionName}
-ON TOPIC "\${2:topic/pattern}" DO
-    SET "\${3:variable}" WITH \${4:expression}
-    PUBLISH MODEL \${5:ModelName} TO (\${6:target_topic}) WITH
-        \${7:field} = \${8:value}`
+    // Basic Function Block
+    const basicFB = new vscode.CompletionItem('Basic Function Block', vscode.CompletionItemKind.Snippet);
+    basicFB.detail = 'Basic function block with inputs and outputs';
+    basicFB.insertText = new vscode.SnippetString(
+      `FUNCTION_BLOCK \${1:BlockName}
+VAR_INPUT
+    \${2:inputName} : \${3|BOOL,INT,REAL,STRING|};
+    enable : BOOL;
+END_VAR
+
+VAR_OUTPUT
+    \${4:outputName} : \${5|BOOL,INT,REAL,STRING|};
+    status : BOOL;
+END_VAR
+
+VAR
+    \${6:internalVar} : \${7|INT,REAL,BOOL|};
+END_VAR
+
+BEGIN
+    IF enable THEN
+        \${8:// Your logic here}
+        status := TRUE;
+    ELSE
+        status := FALSE;
+    END_IF;
+END_FUNCTION_BLOCK`
     );
-    templates.push(topicAction);
+    templates.push(basicFB);
 
     // Periodic Action
     const periodicAction = new vscode.CompletionItem('Periodic Action', vscode.CompletionItemKind.Snippet);
@@ -247,7 +281,7 @@ ON TOPIC "\${2:Raw/Components/+/+}" DO
   }
 
   private getDataTypeCompletions(): vscode.CompletionItem[] {
-    const types = ['STRING', 'OBJECT', 'NUMBER', 'BOOLEAN', 'ARRAY'];
+    const types = ['BOOL', 'BYTE', 'WORD', 'DWORD', 'LWORD', 'SINT', 'INT', 'DINT', 'LINT', 'USINT', 'UINT', 'UDINT', 'ULINT', 'REAL', 'LREAL', 'STRING', 'WSTRING', 'TIME', 'DATE', 'TIME_OF_DAY', 'DATE_AND_TIME', 'ARRAY', 'STRUCT'];
     return types.map(type => {
       const item = new vscode.CompletionItem(type, vscode.CompletionItemKind.Enum);
       item.detail = `${type} data type`;

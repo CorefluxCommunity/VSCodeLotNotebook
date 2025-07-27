@@ -1,14 +1,14 @@
-# SCL (Simplified Configuration Language) to LOT Translator
+# SCL (Structured Control Language) Integration with LOT
 
-This extension now includes support for **SCL (Simplified Configuration Language)** - a more user-friendly syntax that translates to the underlying LOT (Language of Things) format. SCL is designed to make it easier for automation customers to create and maintain IoT configurations.
+This extension now includes support for **SCL (Structured Control Language)** - the standard PLC programming language defined in IEC 61131-3. This integration allows you to use real SCL syntax from industrial automation systems and interface it with your LOT (Language of Things) infrastructure.
 
 ## What is SCL?
 
-SCL provides a simplified, human-readable syntax for defining:
-- **Models**: Data structures for MQTT messages with automatic transformations
-- **Actions**: Event-driven processing logic with triggers and conditions
-- **Routes**: Database connection configurations
-- **Rules**: Conditional logic for data processing
+SCL is the structured text language used in PLCs for defining:
+- **STRUCT**: Data structures for organizing information
+- **FUNCTION_BLOCK**: Reusable code blocks with inputs, outputs, and internal logic
+- **FUNCTION**: Pure functions that calculate outputs from inputs
+- **TYPE**: Custom data type definitions
 
 ## Key Features
 
@@ -31,37 +31,75 @@ SCL provides a simplified, human-readable syntax for defining:
 
 ## SCL Syntax Overview
 
-### Models
+### Data Structures (STRUCT)
 ```scl
-DEFINE MODEL MachineData WITH TOPIC "Simulator/Machine/+/Data"
-    ADD "energy" WITH TOPIC "raw_data/+" AS TRIGGER
-    ADD "device_name" WITH REPLACE "+" WITH TOPIC POSITION 2 IN "+"
-    ADD "energy_wh" WITH (energy * 1000)
-    ADD "production_status" WITH (IF energy > 5 THEN "active" ELSE "inactive")
-    ADD "timestamp" WITH TIMESTAMP "UTC"
-    STORE IN "mongo_route"
-        WITH TABLE "MachineProductionData"
+TYPE SensorData :
+STRUCT
+    temperature : REAL;
+    humidity : REAL;
+    pressure : REAL;
+    timestamp : DATE_AND_TIME;
+    sensorId : STRING[50];
+    isValid : BOOL;
+END_STRUCT
+END_TYPE
 ```
 
-### Actions
+### Function Blocks
 ```scl
-DEFINE ACTION ProcessComponents
-ON TOPIC "Raw/Components/+/+" DO
-    SET "systemId" WITH (GET JSON "info" IN PAYLOAD AS STRING)
-    SET "topicv" WITH ("Components/" + TOPIC POSITION 3 + "/" + TOPIC POSITION 4 + "/" + {systemId})
-    
-    PUBLISH MODEL KafkaMessage TO ({topicv}+"/Unit1") WITH
-        componentId = (TOPIC POSITION 3 + "_" + TOPIC POSITION 4 + "_" + {systemId} + "_" + "Unit1")
-        topic = ({topicv}+"/Unit1")
-        payload = (GET JSON "Unit1" IN PAYLOAD AS STRING)
+FUNCTION_BLOCK DataProcessor
+VAR_INPUT
+    mqttInput : MqttMessage;
+    processEnable : BOOL;
+    cycleTime : TIME;
+END_VAR
+
+VAR_OUTPUT
+    processedData : SensorData;
+    statusOutput : MachineStatus;
+    errorFlag : BOOL;
+    outputReady : BOOL;
+END_VAR
+
+VAR
+    internalCounter : INT;
+    tempValue : REAL;
+END_VAR
+
+BEGIN
+    IF processEnable THEN
+        tempValue := STRING_TO_REAL(mqttInput.payload);
+        
+        IF tempValue > 0.0 AND tempValue < 100.0 THEN
+            processedData.temperature := tempValue;
+            processedData.isValid := TRUE;
+            processedData.timestamp := NOW();
+            outputReady := TRUE;
+        END_IF;
+    END_IF;
+END_FUNCTION_BLOCK
 ```
 
-### Routes (Database Connections)
+### Functions
 ```scl
-DEFINE ROUTE mongo_route WITH TYPE MONGODB
-    ADD MONGODB_CONFIG
-        WITH CONNECTION_STRING "mongodb+srv://username:password@cluster-uri/database"
-        WITH DATABASE "admin"
+FUNCTION CalculateEnergyConsumption : REAL
+VAR_INPUT
+    voltage : REAL;
+    current : REAL;
+    powerFactor : REAL;
+    operatingTime : TIME;
+END_VAR
+
+VAR
+    power : REAL;
+    energyKwh : REAL;
+END_VAR
+
+BEGIN
+    power := voltage * current * powerFactor;
+    energyKwh := (power * TIME_TO_REAL(operatingTime)) / 3600000.0;
+    CalculateEnergyConsumption := energyKwh;
+END_FUNCTION
 ```
 
 ## Available Commands

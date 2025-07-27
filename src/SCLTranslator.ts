@@ -6,47 +6,45 @@ import * as vscode from 'vscode';
 // SCL to LOT Translator
 // ============================================================================
 
-export interface SCLModel {
+export interface SCLStruct {
   name: string;
   topic?: string;
-  collapsed?: boolean;
   fields: Array<{
-    type: 'STRING' | 'OBJECT' | 'NUMBER' | 'BOOLEAN' | 'ARRAY';
+    type: 'STRING' | 'WORD' | 'DWORD' | 'REAL' | 'BOOL' | 'ARRAY';
     name: string;
     value?: string;
+    arraySize?: number;
   }>;
+  // Legacy fields for compatibility
+  collapsed?: boolean;
   storeConfig?: {
     route: string;
     table: string;
   };
 }
 
-export interface SCLAction {
+export interface SCLFunctionBlock {
   name: string;
-  trigger: {
-    type: 'TOPIC' | 'EVERY' | 'TIMESTAMP';
-    value: string;
-    timeUnit?: string;
-  };
+  inputs: Array<{
+    name: string;
+    type: 'BOOL' | 'WORD' | 'DWORD' | 'REAL' | 'STRING';
+    comment?: string;
+  }>;
+  outputs: Array<{
+    name: string;
+    type: 'BOOL' | 'WORD' | 'DWORD' | 'REAL' | 'STRING';
+    comment?: string;
+  }>;
   variables: Array<{
     name: string;
     expression: string;
   }>;
-  conditions: Array<{
-    condition: string;
-    thenActions: string[];
-    elseActions?: string[];
-  }>;
-  publications: Array<{
-    model: string;
-    topic: string;
-    fields: { [key: string]: string };
-  }>;
-  loops?: Array<{
-    type: 'REPEAT';
-    conditions: string[];
-    actions: string[];
-  }>;
+  body: string[]; // SCL statements
+  // Legacy fields for compatibility with existing parser
+  trigger: { type: string; value: string; timeUnit?: string };
+  conditions: any[];
+  publications: any[];
+  loops: any[];
 }
 
 export interface SCLRoute {
@@ -69,37 +67,32 @@ export class SCLTranslator {
   
   /**
    * Parse SCL code and convert to LOT format
+   * NOTE: This is a bridge function - real SCL would need custom mapping to LOT
    */
   public static sclToLot(sclCode: string): string {
-    const lines = sclCode.split('\n').map(line => line.trim()).filter(line => line);
-    const entities: string[] = [];
-    
-    let i = 0;
-    while (i < lines.length) {
-      const line = lines[i];
-      
-      if (line.startsWith('DEFINE MODEL')) {
-        const model = this.parseModel(lines, i);
-        entities.push(this.modelToLot(model.entity));
-        i = model.nextIndex;
-      } else if (line.startsWith('DEFINE ACTION')) {
-        const action = this.parseAction(lines, i);
-        entities.push(this.actionToLot(action.entity));
-        i = action.nextIndex;
-      } else if (line.startsWith('DEFINE ROUTE')) {
-        const route = this.parseRoute(lines, i);
-        entities.push(this.routeToLot(route.entity));
-        i = route.nextIndex;
-      } else if (line.startsWith('DEFINE RULE')) {
-        const rule = this.parseRule(lines, i);
-        entities.push(this.ruleToLot(rule.entity));
-        i = rule.nextIndex;
-      } else {
-        i++;
-      }
-    }
-    
-    return entities.join('\n\n');
+    // For now, return a comment explaining the integration approach
+    return `(* SCL to LOT Integration *)
+(* This SCL code would be used in a PLC system that interfaces with LOT via MQTT *)
+(* The PLC would process data using SCL logic and publish results to MQTT topics *)
+(* that are consumed by LOT actions and models *)
+
+// Original SCL Code:
+${sclCode.split('\n').map(line => `// ${line}`).join('\n')}
+
+// Corresponding LOT integration would define:
+// - MQTT topics for data exchange
+// - LOT actions to process PLC data
+// - LOT models to structure the data flow
+
+DEFINE MODEL PlcIntegration WITH TOPIC "plc/data/+"
+    ADD "timestamp" WITH TIMESTAMP "UTC"
+    ADD "plcData" WITH PAYLOAD AS STRING
+    ADD "processedBy" WITH "SCL_FUNCTION_BLOCK"
+
+DEFINE ACTION ProcessPlcData
+ON TOPIC "plc/data/+" DO
+    // Process data received from PLC running SCL code
+    PUBLISH TOPIC "lot/processed/data" WITH PAYLOAD`;
   }
 
   /**
@@ -135,7 +128,7 @@ export class SCLTranslator {
   // SCL Parsing Methods
   // ============================================================================
 
-  private static parseModel(lines: string[], startIndex: number): { entity: SCLModel; nextIndex: number } {
+  private static parseModel(lines: string[], startIndex: number): { entity: SCLStruct; nextIndex: number } {
     const defineLine = lines[startIndex];
     const match = defineLine.match(/DEFINE MODEL (\w+)(?:\s+COLLAPSED)?(?:\s+WITH TOPIC "([^"]+)")?/);
     
@@ -143,11 +136,11 @@ export class SCLTranslator {
       throw new Error(`Invalid model definition: ${defineLine}`);
     }
 
-    const model: SCLModel = {
+    const model: SCLStruct = {
       name: match[1],
       topic: match[2],
-      collapsed: defineLine.includes('COLLAPSED'),
       fields: [],
+      collapsed: defineLine.includes('COLLAPSED'),
     };
 
     let i = startIndex + 1;
@@ -178,7 +171,7 @@ export class SCLTranslator {
     return { entity: model, nextIndex: i };
   }
 
-  private static parseAction(lines: string[], startIndex: number): { entity: SCLAction; nextIndex: number } {
+  private static parseAction(lines: string[], startIndex: number): { entity: SCLFunctionBlock; nextIndex: number } {
     const defineLine = lines[startIndex];
     const match = defineLine.match(/DEFINE ACTION (\w+)/);
     
@@ -186,10 +179,13 @@ export class SCLTranslator {
       throw new Error(`Invalid action definition: ${defineLine}`);
     }
 
-    const action: SCLAction = {
+    const action: SCLFunctionBlock = {
       name: match[1],
-      trigger: { type: 'TOPIC', value: '' },
+      inputs: [],
+      outputs: [],
       variables: [],
+      body: [],
+      trigger: { type: 'TOPIC', value: '' },
       conditions: [],
       publications: [],
       loops: [],
@@ -298,7 +294,7 @@ export class SCLTranslator {
           }
         }
         
-        action.loops?.push(loop);
+        action.loops.push(loop);
       }
       
       i++;
@@ -385,7 +381,7 @@ export class SCLTranslator {
   // SCL to LOT Conversion Methods
   // ============================================================================
 
-  private static modelToLot(model: SCLModel): string {
+  private static modelToLot(model: SCLStruct): string {
     let lot = `DEFINE MODEL ${model.name}`;
     
     if (model.topic) {
@@ -406,7 +402,7 @@ export class SCLTranslator {
     return lot;
   }
 
-  private static actionToLot(action: SCLAction): string {
+  private static actionToLot(action: SCLFunctionBlock): string {
     let lot = `DEFINE ACTION ${action.name}`;
     
     // Add trigger
@@ -444,15 +440,13 @@ export class SCLTranslator {
     }
     
     // Add loops
-    if (action.loops) {
-      for (const loop of action.loops) {
-        lot += `\n    REPEAT`;
-        for (const loopAction of loop.actions) {
-          lot += `\n        ${loopAction}`;
-        }
-        if (loop.conditions.length > 0) {
-          lot += `\n    UNTIL (${loop.conditions.join(' AND ')})`;
-        }
+    for (const loop of action.loops) {
+      lot += `\n    REPEAT`;
+      for (const loopAction of loop.actions) {
+        lot += `\n        ${loopAction}`;
+      }
+      if (loop.conditions.length > 0) {
+        lot += `\n    UNTIL (${loop.conditions.join(' AND ')})`;
       }
     }
     

@@ -30,18 +30,18 @@
     },
     "keywords": {
       "patterns": [
-        {
-          "name": "keyword.control.define.scl",
-          "match": "\\b(DEFINE)\\b"
-        },
-        {
-          "name": "keyword.control.entity.scl",
-          "match": "\\b(MODEL|ACTION|RULE|ROUTE|VISU)\\b"
-        },
-        {
-          "name": "keyword.control.flow.scl",
-          "match": "\\b(ON|DO|IF|THEN|ELSE|REPEAT|UNTIL|WHILE)\\b"
-        },
+                 {
+           "name": "keyword.control.define.scl",
+           "match": "\\b(FUNCTION_BLOCK|STRUCT|FUNCTION|TYPE)\\b"
+         },
+         {
+           "name": "keyword.control.section.scl",
+           "match": "\\b(VAR|VAR_INPUT|VAR_OUTPUT|VAR_IN_OUT|VAR_TEMP|END_VAR|BEGIN|END_FUNCTION_BLOCK|END_STRUCT|END_FUNCTION|END_TYPE)\\b"
+         },
+                 {
+           "name": "keyword.control.flow.scl",
+           "match": "\\b(IF|THEN|ELSE|ELSIF|END_IF|CASE|OF|END_CASE|FOR|TO|BY|DO|END_FOR|WHILE|END_WHILE|REPEAT|UNTIL|END_REPEAT|EXIT|CONTINUE|RETURN)\\b"
+         },
         {
           "name": "keyword.control.trigger.scl",
           "match": "\\b(TOPIC|EVERY|TIMESTAMP)\\b"
@@ -154,10 +154,10 @@
     },
     "data-types": {
       "patterns": [
-        {
-          "name": "support.type.scl",
-          "match": "\\b(STRING|OBJECT|NUMBER|BOOLEAN|ARRAY|DOUBLE|INT|BOOL)\\b"
-        }
+                 {
+           "name": "support.type.scl",
+           "match": "\\b(BOOL|BYTE|WORD|DWORD|LWORD|SINT|INT|DINT|LINT|USINT|UINT|UDINT|ULINT|REAL|LREAL|STRING|WSTRING|TIME|DATE|TIME_OF_DAY|DATE_AND_TIME|ARRAY|STRUCT)\\b"
+         }
       ]
     },
     "variables": {
