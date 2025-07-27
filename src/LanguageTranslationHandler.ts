@@ -87,15 +87,15 @@ export class LanguageTranslationHandler {
 
     if (targetLanguage === 'lot' && cell.document.languageId === 'scl') {
       // SCL → LOT
-      if (this.isSCLCode(currentContent)) {
+      if (LanguageTranslationHandler.isSCLCode(currentContent)) {
         translatedContent = SCLTranslator.sclToLot(currentContent);
-        await this.replaceCell(cell, translatedContent, 'lot');
+        await LanguageTranslationHandler.replaceCell(cell, translatedContent, 'lot');
       }
     } else if (targetLanguage === 'scl' && cell.document.languageId === 'lot') {
       // LOT → SCL
-      if (this.isLOTCode(currentContent)) {
+      if (LanguageTranslationHandler.isLOTCode(currentContent)) {
         translatedContent = SCLTranslator.lotToScl(currentContent);
-        await this.replaceCell(cell, translatedContent, 'scl');
+        await LanguageTranslationHandler.replaceCell(cell, translatedContent, 'scl');
       }
     }
   }
@@ -157,10 +157,10 @@ export class LanguageTranslationHandler {
       return;
     }
 
-    if (currentLanguage === 'scl' && this.isSCLCode(currentContent)) {
-      await this.handleLanguageSwitch(cell, 'lot');
-    } else if (currentLanguage === 'lot' && this.isLOTCode(currentContent)) {
-      await this.handleLanguageSwitch(cell, 'scl');
+    if (currentLanguage === 'scl' && LanguageTranslationHandler.isSCLCode(currentContent)) {
+      await LanguageTranslationHandler.handleLanguageSwitch(cell, 'lot');
+    } else if (currentLanguage === 'lot' && LanguageTranslationHandler.isLOTCode(currentContent)) {
+      await LanguageTranslationHandler.handleLanguageSwitch(cell, 'scl');
     } else {
       vscode.window.showWarningMessage(
         `Cannot translate: Cell must contain ${currentLanguage === 'scl' ? 'SCL' : 'LOT'} code starting with ${currentLanguage === 'scl' ? 'TYPE, FUNCTION_BLOCK, or VAR' : 'DEFINE'}.`
