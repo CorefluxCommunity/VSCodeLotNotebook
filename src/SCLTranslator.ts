@@ -2,7 +2,9 @@
 
 import * as vscode from 'vscode';
 import { parseSCL } from './parsers/SCLParser';
+import { parseLOT } from './parsers/LOTParser';
 import { LOTGenerator } from './generators/LOTGenerator';
+import { SCLGenerator } from './generators/SCLGenerator';
 import { TranslationContext } from './IR/TranslationIR';
 
 // ============================================================================
@@ -118,32 +120,53 @@ ${sclCode.split('\n').map(line => `// ${line}`).join('\n')}`;
   }
 
   /**
-   * Parse LOT code and convert to SCL format
+   * Parse LOT code and convert to SCL format using proper IR-based translation
    */
   public static lotToScl(lotCode: string): string {
-    // This would parse existing LOT entities and convert them to SCL
-    // For now, we'll implement a basic version
-    const lines = lotCode.split('\n').map(line => line.trim()).filter(line => line);
-    const entities: string[] = [];
-    
-    let i = 0;
-    while (i < lines.length) {
-      const line = lines[i];
+    try {
+      // Parse LOT to IR
+      const program = parseLOT(lotCode);
       
-      if (line.startsWith('DEFINE MODEL')) {
-        const entity = this.parseLotModel(lines, i);
-        entities.push(this.lotModelToScl(entity.entity));
-        i = entity.nextIndex;
-      } else if (line.startsWith('DEFINE ACTION')) {
-        const entity = this.parseLotAction(lines, i);
-        entities.push(this.lotActionToScl(entity.entity));
-        i = entity.nextIndex;
-      } else {
-        i++;
+      // Create translation context
+      const context: TranslationContext = {
+        sourceLanguage: 'LOT',
+        targetLanguage: 'SCL',
+        preserveComments: true,
+        addExplanatoryComments: true,
+        errorHandling: 'lenient',
+        unknownConstructHandling: 'comment'
+      };
+      
+      // Generate SCL from IR
+      const generator = new SCLGenerator(context);
+      const sclCode = generator.generate(program);
+      
+      if (!sclCode.trim()) {
+        return `(* No translatable LOT constructs found *)
+(* Please use DEFINE ACTION, DEFINE MODEL, or DEFINE RULE *)
+(*
+(* Supported LOT constructs: *)
+(* - DEFINE ACTION name ON TOPIC/EVERY ... DO ... *)
+(* - DEFINE MODEL name ADD ... *)
+(* - DEFINE RULE name IF ... THEN ... *)
+*)`;
       }
+      
+      return sclCode;
+      
+    } catch (error) {
+      return `(* LOT Translation Error *)
+(* ${error instanceof Error ? error.message : 'Unknown parsing error'} *)
+(*
+(* Please check your LOT syntax: *)
+(* - Use proper DEFINE ACTION, MODEL, or RULE definitions *)
+(* - Ensure proper ON TOPIC or ON EVERY triggers *)
+(* - Check for missing quotes and proper statement structure *)
+*)
+
+(* Original LOT code (for reference): *)
+${lotCode.split('\n').map(line => `(* ${line} *)`).join('\n')}`;
     }
-    
-    return entities.join('\n\n');
   }
 
   // ============================================================================

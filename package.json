@@ -171,13 +171,15 @@
 			},
 			{
 				"command": "scl.convertToLot",
-				"title": "Convert SCL to LOT",
-				"category": "SCL"
+				"title": "→ LOT",
+				"category": "SCL",
+				"icon": "$(arrow-right)"
 			},
 			{
 				"command": "scl.convertFromLot",
-				"title": "Convert LOT to SCL",
-				"category": "SCL"
+				"title": "→ SCL", 
+				"category": "SCL",
+				"icon": "$(arrow-left)"
 			},
 			{
 				"command": "scl.format",
@@ -200,6 +202,30 @@
 				"category": "SCL"
 			}
 		],
+		"menus": {
+			"editor/cell/title": [
+				{
+					"when": "notebookCellType == code && notebookCellLangId == scl",
+					"command": "scl.convertToLot",
+					"group": "inline@1"
+				},
+				{
+					"when": "notebookCellType == code && notebookCellLangId == lot",
+					"command": "scl.convertFromLot", 
+					"group": "inline@1"
+				}
+			],
+			"commandPalette": [
+				{
+					"command": "scl.convertToLot",
+					"when": "notebookCellType == code && notebookCellLangId == scl"
+				},
+				{
+					"command": "scl.convertFromLot",
+					"when": "notebookCellType == code && notebookCellLangId == lot"
+				}
+			]
+		},
 		"notebooks": [
 			{
 				"id": "lot-notebook",
