@@ -336,73 +336,88 @@ export class SCLCommands {
     }
 
     /**
-     * Create a new SCL model template
+     * Create a new SCL STRUCT template
      */
     public static async createSclModel(): Promise<void> {
-        const modelName = await vscode.window.showInputBox({
-            prompt: 'Enter model name',
-            placeHolder: 'MyModel'
+        const structName = await vscode.window.showInputBox({
+            prompt: 'Enter STRUCT name',
+            placeHolder: 'SensorData'
         });
 
-        if (!modelName) return;
+        if (!structName) return;
 
-        const topic = await vscode.window.showInputBox({
-            prompt: 'Enter topic pattern',
-            placeHolder: 'sensor/+/data'
-        });
-
-        if (!topic) return;
-
-        const template = `DEFINE MODEL ${modelName} WITH TOPIC "${topic}"
-    ADD STRING "deviceId"
-    ADD OBJECT "payload"
-    ADD "timestamp" WITH TIMESTAMP "UTC"`;
+        const template = `TYPE ${structName} :
+STRUCT
+    temperature : REAL;
+    humidity : REAL;
+    pressure : REAL;
+    timestamp : STRING;
+    isValid : BOOL;
+END_STRUCT
+END_TYPE`;
 
         SCLCommands.insertSclTemplate(template);
     }
 
     /**
-     * Create a new SCL action template
+     * Create a new SCL FUNCTION_BLOCK template
      */
     public static async createSclAction(): Promise<void> {
-        const actionName = await vscode.window.showInputBox({
-            prompt: 'Enter action name',
-            placeHolder: 'MyAction'
+        const functionBlockName = await vscode.window.showInputBox({
+            prompt: 'Enter FUNCTION_BLOCK name',
+            placeHolder: 'MotorController'
         });
 
-        if (!actionName) return;
+        if (!functionBlockName) return;
 
-        const triggerType = await vscode.window.showQuickPick(
-            ['TOPIC', 'EVERY', 'TIMESTAMP'],
-            { placeHolder: 'Select trigger type' }
-        );
+        const template = `FUNCTION_BLOCK ${functionBlockName}
+VAR_INPUT
+    enable : BOOL;
+    setPoint : REAL;
+    processValue : REAL;
+END_VAR
 
-        if (!triggerType) return;
+VAR_OUTPUT
+    output : REAL;
+    alarmActive : BOOL;
+    statusMessage : STRING;
+END_VAR
 
-        let triggerValue = '';
-        if (triggerType === 'TOPIC') {
-            triggerValue = await vscode.window.showInputBox({
-                prompt: 'Enter topic pattern',
-                placeHolder: 'sensor/+/data'
-            }) || '';
-        } else if (triggerType === 'EVERY') {
-            triggerValue = await vscode.window.showInputBox({
-                prompt: 'Enter time interval (e.g., "30 SECONDS")',
-                placeHolder: '30 SECONDS'
-            }) || '';
-        }
+VAR
+    error : REAL;
+    integral : REAL;
+    derivative : REAL;
+    lastError : REAL;
+END_VAR
 
-        const template = triggerType === 'TOPIC' 
-            ? `DEFINE ACTION ${actionName}
-ON TOPIC "${triggerValue}" DO
-    SET "variable" WITH (GET JSON "field" IN PAYLOAD AS STRING)
-    PUBLISH MODEL TargetModel TO ("output/topic") WITH
-        field = {variable}`
-            : `DEFINE ACTION ${actionName}
-ON EVERY ${triggerValue} DO
-    SET "variable" WITH "value"
-    PUBLISH MODEL TargetModel TO ("output/topic") WITH
-        field = {variable}`;
+BEGIN
+    IF enable THEN
+        error := setPoint - processValue;
+        integral := integral + error * 0.1;
+        derivative := error - lastError;
+        output := (error * 2.0) + (integral * 0.5) + (derivative * 1.0);
+        
+        IF output > 100.0 THEN
+            output := 100.0;
+            alarmActive := TRUE;
+            statusMessage := 'Output saturated high';
+        ELSIF output < 0.0 THEN
+            output := 0.0;
+            alarmActive := TRUE;
+            statusMessage := 'Output saturated low';
+        ELSE
+            alarmActive := FALSE;
+            statusMessage := 'Normal operation';
+        END_IF;
+        
+        lastError := error;
+    ELSE
+        output := 0.0;
+        alarmActive := FALSE;
+        statusMessage := 'Disabled';
+        integral := 0.0;
+    END_IF;
+END_FUNCTION_BLOCK`;
 
         SCLCommands.insertSclTemplate(template);
     }

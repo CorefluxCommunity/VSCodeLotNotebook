@@ -1,6 +1,9 @@
 // src/SCLTranslator.ts
 
 import * as vscode from 'vscode';
+import { parseSCL } from './parsers/SCLParser';
+import { LOTGenerator } from './generators/LOTGenerator';
+import { TranslationContext } from './IR/TranslationIR';
 
 // ============================================================================
 // SCL to LOT Translator
@@ -66,43 +69,52 @@ export interface SCLRule {
 export class SCLTranslator {
   
   /**
-   * Parse SCL code and convert to LOT format
+   * Parse SCL code and convert to LOT format using proper IR-based translation
    * This helps control engineers learn LOT by seeing direct translations
    */
   public static sclToLot(sclCode: string): string {
-    const lines = sclCode.split('\n').map(line => line.trim()).filter(line => line);
-    const lotEntities: string[] = [];
-    
-    let i = 0;
-    while (i < lines.length) {
-      const line = lines[i];
+    try {
+      // Parse SCL to IR
+      const program = parseSCL(sclCode);
       
-      if (line.startsWith('TYPE ') && line.includes(':')) {
-        const struct = this.parseStruct(lines, i);
-        lotEntities.push(this.structToLot(struct.entity));
-        i = struct.nextIndex;
-      } else if (line.startsWith('FUNCTION_BLOCK ')) {
-        const fb = this.parseFunctionBlock(lines, i);
-        lotEntities.push(this.functionBlockToLot(fb.entity));
-        i = fb.nextIndex;
-      } else if (line.startsWith('FUNCTION ')) {
-        const func = this.parseFunction(lines, i);
-        lotEntities.push(this.functionToLot(func.entity));
-        i = func.nextIndex;
-      } else {
-        i++;
+      // Create translation context
+      const context: TranslationContext = {
+        sourceLanguage: 'SCL',
+        targetLanguage: 'LOT',
+        preserveComments: true,
+        addExplanatoryComments: true,
+        errorHandling: 'lenient',
+        unknownConstructHandling: 'comment'
+      };
+      
+      // Generate LOT from IR
+      const generator = new LOTGenerator(context);
+      const lotCode = generator.generate(program);
+      
+      if (!lotCode.trim()) {
+        return `// No translatable SCL constructs found
+// Please use TYPE, FUNCTION_BLOCK, or FUNCTION definitions
+// 
+// Supported SCL constructs:
+// - TYPE name : STRUCT ... END_STRUCT END_TYPE
+// - FUNCTION_BLOCK name ... END_FUNCTION_BLOCK  
+// - FUNCTION name : returnType ... END_FUNCTION`;
       }
-    }
-    
-    if (lotEntities.length === 0) {
-      return `// No translatable SCL constructs found
-// Please use TYPE, FUNCTION_BLOCK, or FUNCTION definitions`;
-    }
-    
-    return `// SCL to LOT Translation for Control Engineers
-// This shows how your familiar SCL concepts map to LOT
+      
+      return lotCode;
+      
+    } catch (error) {
+      return `// SCL Translation Error
+// ${error instanceof Error ? error.message : 'Unknown parsing error'}
+//
+// Please check your SCL syntax:
+// - Use proper TYPE, FUNCTION_BLOCK, or FUNCTION definitions
+// - Ensure all blocks are properly closed (END_TYPE, END_FUNCTION_BLOCK, etc.)
+// - Check for missing semicolons and proper variable declarations
 
-${lotEntities.join('\n\n')}`;
+// Original SCL code (for reference):
+${sclCode.split('\n').map(line => `// ${line}`).join('\n')}`;
+    }
   }
 
   /**
