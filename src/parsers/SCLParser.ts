@@ -858,6 +858,21 @@ export class SCLParser {
         
         this.expect(')');
         
+        // Special handling for GetTopic function - convert to TopicAccess
+        if (name.toUpperCase() === 'GETTOPIC' && args.length > 0) {
+          const topicArg = args[0];
+          if (topicArg.exprType === 'Constant') {
+            const constantArg = topicArg as Constant;
+            if (constantArg.dataType === 'STRING') {
+              return {
+                type: 'Expression',
+                exprType: 'TopicAccess',
+                topicPattern: constantArg.value as string
+              } as any;
+            }
+          }
+        }
+        
         return {
           type: 'Expression',
           exprType: 'FunctionCall',

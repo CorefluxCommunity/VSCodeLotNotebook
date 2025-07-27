@@ -289,16 +289,37 @@ export class SCLGenerator {
   }
 
   private generateExpression(expression: Expression): string {
-    if (expression.exprType === 'Constant') {
-      const constant = expression as Constant;
-      if (constant.dataType === 'STRING') {
-        return `'${constant.value}'`;
-      } else {
-        return String(constant.value);
-      }
-    } else {
-      // For complex expressions, just return the string representation
-      return String((expression as any).value || 'UNKNOWN');
+    switch (expression.exprType) {
+      case 'Constant':
+        const constant = expression as Constant;
+        if (constant.dataType === 'STRING') {
+          return `'${constant.value}'`;
+        } else {
+          return String(constant.value);
+        }
+      
+      case 'Variable':
+        const variable = expression as any;
+        return variable.name;
+      
+      case 'TopicAccess':
+        const topicAccess = expression as any;
+        return `GetTopic('${topicAccess.topicPattern}')`;
+      
+      case 'BinaryOp':
+        const binOp = expression as any;
+        const left = this.generateExpression(binOp.left);
+        const right = this.generateExpression(binOp.right);
+        return `${left} ${binOp.operator} ${right}`;
+      
+      case 'FunctionCall':
+        const funcCall = expression as any;
+        const args = funcCall.arguments?.map((arg: any) => this.generateExpression(arg)).join(', ') || '';
+        return `${funcCall.functionName}(${args})`;
+      
+      default:
+        // For complex expressions, just return the string representation
+        return String((expression as any).value || 'UNKNOWN');
     }
   }
 

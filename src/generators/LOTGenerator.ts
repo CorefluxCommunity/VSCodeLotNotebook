@@ -314,7 +314,19 @@ export class LOTGenerator {
       
       case 'FunctionCall':
         const funcCall = expression as any;
+        // Handle special LOT functions
+        if (funcCall.functionName.toUpperCase() === 'GETTOPIC' && funcCall.arguments.length > 0) {
+          const topicArg = this.generateExpression(funcCall.arguments[0]);
+          // Remove quotes if it's a string literal
+          const topic = topicArg.startsWith('"') && topicArg.endsWith('"') ? 
+                       topicArg.slice(1, -1) : topicArg;
+          return `GET TOPIC "${topic}"`;
+        }
         return `${funcCall.functionName}(${funcCall.arguments.map((arg: any) => this.generateExpression(arg)).join(', ')})`;
+      
+      case 'TopicAccess':
+        const topicAccess = expression as any;
+        return `GET TOPIC "${topicAccess.topicPattern}"`;
       
       default:
         return 'UNKNOWN_EXPRESSION';

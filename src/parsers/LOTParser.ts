@@ -484,17 +484,103 @@ export class LOTParser {
   }
 
   private parseExpression(): Expression {
-    // Simple expression parsing - just return a constant for now
-    let value = '';
-    while (!this.check('THEN') && !this.check('DO') && !this.isAtEnd()) {
-      value += this.getCurrentToken().value + ' ';
-      this.advance();
+    return this.parseComparison();
+  }
+
+  private parseComparison(): Expression {
+    let expr = this.parsePrimary();
+
+    while (this.check('EQUALS') || this.check('=') || this.check('<>') || this.check('!=') || 
+           this.check('<') || this.check('>') || this.check('<=') || this.check('>=')) {
+      const operator = this.advance().value;
+      const right = this.parsePrimary();
+      
+      expr = {
+        type: 'Expression',
+        exprType: 'BinaryOp',
+        operator: operator === 'EQUALS' ? '=' : operator,
+        left: expr,
+        right
+      } as any;
     }
 
+    return expr;
+  }
+
+  private parsePrimary(): Expression {
+    // Handle GET TOPIC expressions
+    if (this.check('GET')) {
+      this.advance(); // consume GET
+      
+      if (this.check('TOPIC')) {
+        this.advance(); // consume TOPIC
+        
+        // Expect topic name (string or identifier)
+        let topicName = '';
+        if (this.getCurrentToken().type === 'STRING') {
+          topicName = this.advance().value;
+        } else if (this.getCurrentToken().type === 'IDENTIFIER') {
+          topicName = this.advance().value;
+        } else {
+          throw new Error(`Expected topic name after GET TOPIC, got '${this.getCurrentToken().value}'`);
+        }
+        
+        return {
+          type: 'Expression',
+          exprType: 'TopicAccess',
+          topicPattern: topicName
+        } as any;
+      }
+      
+      throw new Error(`Expected TOPIC after GET, got '${this.getCurrentToken().value}'`);
+    }
+
+    // Handle string literals
+    if (this.getCurrentToken().type === 'STRING') {
+      const value = this.advance().value;
+      return {
+        type: 'Expression',
+        exprType: 'Constant',
+        value,
+        dataType: 'STRING'
+      } as Constant;
+    }
+
+    // Handle identifiers/variables
+    if (this.getCurrentToken().type === 'IDENTIFIER') {
+      const name = this.advance().value;
+      return {
+        type: 'Expression',
+        exprType: 'Variable',
+        name
+      } as any;
+    }
+
+    // Handle numbers
+    if (this.getCurrentToken().type === 'NUMBER') {
+      const value = parseFloat(this.advance().value);
+      return {
+        type: 'Expression',
+        exprType: 'Constant',
+        value,
+        dataType: 'REAL'
+      } as Constant;
+    }
+
+    // Handle parentheses
+    if (this.check('(')) {
+      this.advance(); // consume (
+      const expr = this.parseExpression();
+      this.expect(')');
+      return expr;
+    }
+
+    // Fallback - treat as string constant
+    const value = this.advance().value;
     return {
       type: 'Expression',
       exprType: 'Constant',
-      value: value.trim(),
+      value,
       dataType: 'STRING'
     } as Constant;
   }
