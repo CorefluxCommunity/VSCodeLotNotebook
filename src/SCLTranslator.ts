@@ -83,8 +83,8 @@ export class SCLTranslator {
       const context: TranslationContext = {
         sourceLanguage: 'SCL',
         targetLanguage: 'LOT',
-        preserveComments: true,
-        addExplanatoryComments: true,
+        preserveComments: false,
+        addExplanatoryComments: false,
         errorHandling: 'lenient',
         unknownConstructHandling: 'comment'
       };
@@ -131,8 +131,8 @@ ${sclCode.split('\n').map(line => `// ${line}`).join('\n')}`;
       const context: TranslationContext = {
         sourceLanguage: 'LOT',
         targetLanguage: 'SCL',
-        preserveComments: true,
-        addExplanatoryComments: true,
+        preserveComments: false,
+        addExplanatoryComments: false,
         errorHandling: 'lenient',
         unknownConstructHandling: 'comment'
       };

@@ -90,9 +90,15 @@ export class LOTGenerator {
 
     output.push(`DEFINE ACTION ${fb.name}`);
 
-    // Determine trigger based on inputs
-    const triggerTopic = this.generateTriggerForFunctionBlock(fb);
-    output.push(`ON TOPIC "${triggerTopic}" DO`);
+    // Check if this is a timer pattern (TON with retrigger logic)
+    const timerPattern = this.detectTimerPattern(fb);
+    if (timerPattern) {
+      output.push(`ON EVERY ${timerPattern.interval} ${timerPattern.unit} DO`);
+    } else {
+      // Determine trigger based on inputs
+      const triggerTopic = this.generateTriggerForFunctionBlock(fb);
+      output.push(`ON TOPIC "${triggerTopic}" DO`);
+    }
 
     // Generate input handling
     if (fb.inputVariables.length > 0) {
@@ -116,7 +122,11 @@ export class LOTGenerator {
         output.push('    // Original SCL logic translated to LOT:');
       }
       
-      for (const statement of fb.body) {
+      const filteredStatements = timerPattern ? 
+        this.filterTimerManagementStatements(fb.body, fb.localVariables) : 
+        fb.body;
+      
+      for (const statement of filteredStatements) {
         const lotStatement = this.generateStatement(statement, 1);
         if (lotStatement.trim()) {
           output.push(lotStatement);
@@ -309,6 +319,140 @@ export class LOTGenerator {
       default:
         return 'UNKNOWN_EXPRESSION';
     }
+  }
+
+  private detectTimerPattern(fb: FunctionBlock): { interval: number; unit: string } | null {
+    // Look for TON timer variables
+    const timerVariable = fb.localVariables.find(variable => 
+      variable.dataType.dataType === 'TON' || 
+      variable.dataType.dataType === 'TOF' || 
+      variable.dataType.dataType === 'TP'
+    );
+    
+    if (!timerVariable) {
+      return null;
+    }
+    
+    // Look for timer pattern in the function block body:
+    // 1. Timer call with PT parameter
+    // 2. IF timer.Q THEN with retrigger logic
+    let timerInterval: number | null = null;
+    let timerUnit: string = 'SECOND';
+    
+    for (const statement of fb.body) {
+      // Look for timer function calls with time constants
+      if (statement.statementType === 'FunctionCall') {
+        const funcCall = statement as any;
+        if (funcCall.functionName.toUpperCase() === timerVariable.name.toUpperCase()) {
+          // Check arguments for time literal (T#1S, T#500MS, etc.)
+          for (const arg of funcCall.arguments) {
+            if (arg.exprType === 'Constant' && typeof arg.value === 'string' && arg.value.startsWith('T#')) {
+              const timeMatch = arg.value.match(/T#(\d+(?:\.\d+)?)([A-Z]+)/i);
+              if (timeMatch) {
+                const value = parseFloat(timeMatch[1]);
+                const unit = timeMatch[2].toUpperCase();
+                
+                // Convert to LOT time units
+                switch (unit) {
+                  case 'MS':
+                    timerInterval = value / 1000;
+                    timerUnit = 'SECOND';
+                    break;
+                  case 'S':
+                    timerInterval = value;
+                    timerUnit = 'SECOND';
+                    break;
+                  case 'M':
+                    timerInterval = value;
+                    timerUnit = 'MINUTE';
+                    break;
+                  case 'H':
+                    timerInterval = value;
+                    timerUnit = 'HOUR';
+                    break;
+                  default:
+                    timerInterval = value;
+                    timerUnit = 'SECOND';
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      // Look for retrigger pattern (IF timer.Q THEN timer(IN := FALSE); timer(IN := TRUE);)
+      if (statement.statementType === 'If') {
+        const ifStmt = statement as any;
+        if (ifStmt.condition?.name === `${timerVariable.name.toUpperCase()}.Q`) {
+          // This is likely a retrigger pattern for periodic execution
+          if (timerInterval !== null) {
+            return { interval: timerInterval, unit: timerUnit };
+          }
+        }
+      }
+    }
+    
+    return null;
+  }
+
+  private filterTimerManagementStatements(statements: Statement[], variables: VariableDeclaration[]): Statement[] {
+    // Find timer variables
+    const timerVariables = variables.filter(variable => 
+      variable.dataType.dataType === 'TON' || 
+      variable.dataType.dataType === 'TOF' || 
+      variable.dataType.dataType === 'TP'
+    ).map(v => v.name.toUpperCase());
+    
+    if (timerVariables.length === 0) {
+      return statements;
+    }
+    
+    const filtered: Statement[] = [];
+    
+    for (const statement of statements) {
+      let shouldInclude = true;
+      
+      // Filter out timer function calls (tmr1s(IN := TRUE, PT := T#1S))
+      if (statement.statementType === 'FunctionCall') {
+        const funcCall = statement as any;
+        if (timerVariables.includes(funcCall.functionName.toUpperCase())) {
+          shouldInclude = false;
+        }
+      }
+      
+      // Filter out IF statements that are only for timer retrigger logic
+      if (statement.statementType === 'If') {
+        const ifStmt = statement as any;
+        if (ifStmt.condition?.name && 
+            timerVariables.some(timer => ifStmt.condition.name === `${timer}.Q`)) {
+          // Check if the IF body only contains timer retrigger calls
+          const timerCalls = ifStmt.thenBranch.filter((stmt: any) => {
+            return stmt.statementType === 'FunctionCall' && 
+                   timerVariables.includes(stmt.functionName.toUpperCase());
+          });
+          
+          const nonTimerCalls = ifStmt.thenBranch.filter((stmt: any) => {
+            return !(stmt.statementType === 'FunctionCall' && 
+                     timerVariables.includes(stmt.functionName.toUpperCase()));
+          });
+          
+          // If this IF statement has timer calls, we need to extract the non-timer parts
+          const hasTimerCalls = timerCalls.length > 0;
+          
+          if (hasTimerCalls) {
+            // Add non-timer statements directly (without the IF wrapper for timer-triggered logic)
+            filtered.push(...nonTimerCalls);
+            shouldInclude = false;
+          }
+        }
+      }
+      
+      if (shouldInclude) {
+        filtered.push(statement);
+      }
+    }
+    
+    return filtered;
   }
 
   private generateTriggerForFunctionBlock(fb: FunctionBlock): string {
