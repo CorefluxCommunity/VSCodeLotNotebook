@@ -70,6 +70,20 @@ async function loadChartJs(): Promise<void> {
 }
 
 /**
+ * Extracts HTML from a ```html markdown block.
+ * @param str The string to search.
+ * @returns The extracted HTML content, or null if not found.
+ */
+function extractHtmlFromMarkdown(str: string): string | null {
+  // Look for ```html ... ``` or '''html ... ''' and matching fences
+  const match = str.match(/(?:```|''')html\s*([\s\S]+?)\s*(?:```|''')/);
+  if (match && match[1]) {
+    return match[1].trim();
+  }
+  return null;
+}
+
+/**
  * Check if a string is valid JSON
  */
 function isValidJSON(str: string): boolean {
@@ -137,14 +151,6 @@ function isHTMLContent(str: string): boolean {
  * Render JSON breakdown
  */
 function renderJSONBreakdown(parent: HTMLElement, jsonData: any, path: string, level: number): void {
-  const container = document.createElement('div');
-  container.style.marginLeft = `${level * 20}px`;
-  container.style.marginTop = '5px';
-  container.style.border = '1px solid #ddd';
-  container.style.borderRadius = '4px';
-  container.style.padding = '8px';
-  container.style.backgroundColor = '#f9f9f9';
-  
   const renderValue = (value: any, key: string, currentPath: string, currentLevel: number): HTMLElement => {
     const itemDiv = document.createElement('div');
     itemDiv.style.marginLeft = `${currentLevel * 15}px`;
@@ -215,19 +221,13 @@ function renderJSONBreakdown(parent: HTMLElement, jsonData: any, path: string, l
           valueSpan.appendChild(document.createElement('br'));
           valueSpan.appendChild(img);
         } else if (isHTML) {
-          const htmlPreview = document.createElement('div');
-          htmlPreview.innerHTML = value;
-          htmlPreview.style.maxWidth = '300px';
-          htmlPreview.style.maxHeight = '200px';
-          htmlPreview.style.overflow = 'auto';
-          htmlPreview.style.border = '1px solid #ccc';
-          htmlPreview.style.padding = '5px';
-          htmlPreview.style.backgroundColor = 'white';
-          htmlPreview.style.margin = '5px 0';
-          htmlPreview.style.borderRadius = '3px';
           valueSpan.appendChild(document.createTextNode(`"${value.substring(0, 50)}..."`));
           valueSpan.appendChild(document.createElement('br'));
-          valueSpan.appendChild(htmlPreview);
+          
+          const htmlContainer = document.createElement('div');
+          htmlContainer.style.marginTop = '5px';
+          renderHTMLContent(htmlContainer, value, `${currentPath}-htmlpreview`); // Use safe iframe renderer
+          valueSpan.appendChild(htmlContainer);
         } else {
           // Check if it's JSON within JSON
           if (isValidJSON(value)) {
@@ -291,40 +291,72 @@ function renderJSONBreakdown(parent: HTMLElement, jsonData: any, path: string, l
   
   if (typeof jsonData === 'object' && jsonData !== null) {
     for (const [key, value] of Object.entries(jsonData)) {
-      container.appendChild(renderValue(value, key, `${path}.${key}`, 0));
+      parent.appendChild(renderValue(value, key, `${path}.${key}`, level));
     }
   }
-  
-  parent.appendChild(container);
 }
 
 /**
  * Render HTML content in an iframe
  */
-function renderHTMLContent(parent: HTMLElement, htmlContent: string, path: string): void {
+function renderHTMLContent(parent: HTMLElement, htmlContent: string, path:string): void {
+  // Unescape newline characters so they render correctly in the HTML.
+  const processedHtml = htmlContent.replace(/\\n/g, '\n');
+
   const container = document.createElement('div');
   container.style.marginTop = '5px';
   container.style.border = '1px solid #ddd';
   container.style.borderRadius = '4px';
   container.style.overflow = 'hidden';
-  
+
   const header = document.createElement('div');
   header.style.backgroundColor = '#f0f0f0';
   header.style.padding = '5px 10px';
   header.style.borderBottom = '1px solid #ddd';
   header.style.fontWeight = 'bold';
-  header.textContent = 'HTML Preview';
-  
+  header.style.display = 'flex';
+  header.style.justifyContent = 'space-between';
+  header.style.alignItems = 'center';
+
+  const titleSpan = document.createElement('span');
+  titleSpan.textContent = 'HTML Preview';
+  header.appendChild(titleSpan);
+
+  const openBtn = document.createElement('button');
+  openBtn.textContent = '↗️ Open in New Tab';
+  openBtn.title = 'Open content in a new browser tab';
+  openBtn.style.padding = '2px 8px';
+  openBtn.style.fontSize = '11px';
+  openBtn.style.cursor = 'pointer';
+  openBtn.style.border = '1px solid #ccc';
+  openBtn.style.borderRadius = '3px';
+  openBtn.addEventListener('click', () => {
+    const blob = new Blob([processedHtml], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    // Create a temporary anchor to trigger opening in a new tab
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    document.body.appendChild(a);
+    a.click();
+    // Clean up the anchor and blob URL after a short delay
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
+  });
+  header.appendChild(openBtn);
+
   const iframe = document.createElement('iframe');
   iframe.style.width = '100%';
   iframe.style.height = '300px';
   iframe.style.border = 'none';
   iframe.style.backgroundColor = 'white';
-  
+
   // Create a blob URL for the HTML content
-  const blob = new Blob([htmlContent], { type: 'text/html' });
+  const blob = new Blob([processedHtml], { type: 'text/html' });
   iframe.src = URL.createObjectURL(blob);
-  
+
   container.appendChild(header);
   container.appendChild(iframe);
   parent.appendChild(container);
@@ -422,375 +454,124 @@ function buildTree(
   node: Record<string, any>,
   path: string,
   level: number,
-  colorChart: string = '#4bc0c0'
+  defaultColor: string = '#4bc0c0'
 ): void {
-  for (const key of Object.keys(node)) {
-    if (key === '_value') continue;
+  const processedNode = { ...node };
+
+  // Pre-process to extract ```html blocks from 'content' property
+  if (processedNode.content && typeof processedNode.content === 'string') {
+    const originalContent = processedNode.content;
+    const extractedHtml = extractHtmlFromMarkdown(originalContent);
+    if (extractedHtml) {
+      const htmlBlockStartIndex = originalContent.indexOf('```html');
+      // Update content to be only the text before the block
+      processedNode.content = originalContent.substring(0, htmlBlockStartIndex).trim();
+      
+      // If content is now empty, remove it to avoid displaying an empty "content: " line
+      if (!processedNode.content) {
+        delete processedNode.content;
+      }
+
+      // Add a new node for the HTML preview. Store raw HTML string.
+      processedNode['html_preview'] = extractedHtml;
+    }
+  }
+
+  for (const key of Object.keys(processedNode)) {
+    if (key === '_value') continue; // This is handled by its parent node
 
     const currentPath = path ? `${path}/${key}` : key;
-    const val = node[key];
+    const val = processedNode[key];
     const expanded = expansionsMap[currentPath] ?? false;
 
-    if (typeof val === 'object' && val !== null) {
-      // folder
+    // A "container" is an object or array that we can expand and recurse into.
+    // We exclude null and objects that are just _value wrappers.
+    const isContainer = val && typeof val === 'object' && !val.hasOwnProperty('_value');
+
+    if (isContainer) {
+      // Create an expandable <details> element for the container
       const details = document.createElement('details');
-      //details.style.backgroundColor = '#f9f9f9';
       if (expanded) details.setAttribute('open', '');
       details.style.marginLeft = `${level * 20}px`;
 
       const summary = document.createElement('summary');
-      summary.textContent = key;
+      summary.textContent = Array.isArray(val) ? `${key}: [${val.length} items]` : key;
       details.appendChild(summary);
 
       details.addEventListener('toggle', () => {
         expansionsMap[currentPath] = details.hasAttribute('open');
       });
-
-      const chartDiv = parent.querySelector(`#chartDiv-${escapeId(path)}`) as HTMLDivElement | null;
-      const defaultColorInput = chartDiv?.querySelector<HTMLInputElement>(
-        `#chartColor-${escapeId(path)}`
-      );
-      const defaultColor = defaultColorInput ? defaultColorInput.value : '#4bc0c0';
-
       parent.appendChild(details);
+      
+      // Recurse to build the tree for the container's children
       buildTree(details, val, currentPath, level + 1, defaultColor);
 
     } else {
-      // leaf
-      const div = document.createElement('div');
-      div.style.marginLeft = `${level * 20}px`;
-      div.innerHTML = `<strong>${key}:</strong> ${String(val)}`;
-      parent.appendChild(div);
-    }
+      // It's a "leaf" node: a primitive value, a _value wrapper, or our special html_preview
+      const payloadStr = (val && val.hasOwnProperty && val.hasOwnProperty('_value'))
+        ? String(val._value)
+        : String(val);
 
-    // if a nested _value
-    if (val && typeof val === 'object' && val.hasOwnProperty('_value')) {
-      const payloadStr = String(val._value);
+      // Create a container for the entire leaf entry
+      const leafContainer = document.createElement('div');
+      leafContainer.style.marginLeft = `${(level) * 20}px`;
+      leafContainer.style.padding = '2px 0';
 
-      const payloadDiv = document.createElement('div');
-      payloadDiv.style.marginLeft = `${(level + 1) * 20}px`;
-      payloadDiv.style.display = 'flex';
-      payloadDiv.style.alignItems = 'center';
-
-      // Wrap payload value in a span for context menu
-      const payloadValueSpan = document.createElement('span');
+      // The line with the key and the raw (or truncated) value
+      const payloadLineDiv = document.createElement('div');
+      payloadLineDiv.style.display = 'flex';
+      payloadLineDiv.style.alignItems = 'center';
       
-      // Handle very large payloads
       let displayValue = payloadStr;
-      let isTruncated = false;
-      const maxDisplayLength = 500;
-      
-      if (payloadStr.length > maxDisplayLength) {
-        displayValue = payloadStr.substring(0, maxDisplayLength) + '...';
-        isTruncated = true;
-      }
-      
-      payloadValueSpan.innerHTML = `<strong>Payload:</strong> <span id="payloadValue-${escapeId(currentPath)}" title="Right-click to change data type">${displayValue}</span>`;
-      
-      // Add full payload tooltip if truncated
+      const isTruncated = displayValue.length > 500;
       if (isTruncated) {
-        const payloadSpan = payloadValueSpan.querySelector(`#payloadValue-${escapeId(currentPath)}`);
-        if (payloadSpan) {
-          payloadSpan.title = `Right-click to change data type\n\nFull payload (${payloadStr.length} chars):\n${payloadStr}`;
-        }
+        displayValue = displayValue.substring(0, 500) + '...';
       }
+      
+      payloadLineDiv.innerHTML = `<strong>${key}:</strong>&nbsp;`;
+      const valueSpan = document.createElement('span');
+      valueSpan.textContent = displayValue;
+      if (isTruncated) {
+        valueSpan.title = `Full payload (${payloadStr.length} chars):\n${payloadStr}`;
+      }
+      payloadLineDiv.appendChild(valueSpan);
 
-      // --- ENHANCED CONTENT RENDERING LOGIC ---
-      // Check for JSON content
+      leafContainer.appendChild(payloadLineDiv);
+
+      // --- Rich Content Rendering ---
+      const contentDiv = document.createElement('div');
+      contentDiv.style.marginTop = '5px';
+
       const isJSON = isValidJSON(payloadStr);
-      
-      // Check for base64 image content
       const imageCheck = isBase64Image(payloadStr);
-      
-      // Check for HTML content
       const isHTML = isHTMLContent(payloadStr);
-      
-      // Check if payload contains nested JSON (common in API responses)
-      let nestedJSONData: any = null;
-      if (!isJSON && payloadStr.includes('{') && payloadStr.includes('}')) {
-        try {
-          // Try to extract JSON from the payload
-          const jsonMatch = payloadStr.match(/\{.*\}/s);
-          if (jsonMatch) {
-            nestedJSONData = JSON.parse(jsonMatch[0]);
-          }
-        } catch {
-          // Ignore parsing errors
-        }
+
+      let renderedRichContent = false;
+      if (key === 'html_preview' || (!isJSON && !imageCheck.isImage && isHTML)) {
+        renderHTMLContent(contentDiv, payloadStr, currentPath);
+        renderedRichContent = true;
+      } else if (isJSON) {
+        renderJSONBreakdown(contentDiv, JSON.parse(payloadStr), currentPath, 0);
+        renderedRichContent = true;
+      } else if (imageCheck.isImage) {
+        const img = document.createElement('img');
+        img.src = imageCheck.src!;
+        img.alt = 'Base64 Image';
+        img.style.maxWidth = '400px';
+        img.style.maxHeight = '300px';
+        img.style.display = 'block';
+        img.style.margin = '8px 0';
+        img.style.border = '1px solid #ddd';
+        img.style.borderRadius = '4px';
+        contentDiv.appendChild(img);
+        renderedRichContent = true;
+      }
+
+      if (renderedRichContent) {
+        leafContainer.appendChild(contentDiv);
       }
       
-      // Create action buttons container
-      const actionButtonsDiv = document.createElement('div');
-      actionButtonsDiv.style.marginTop = '5px';
-      actionButtonsDiv.style.display = 'flex';
-      actionButtonsDiv.style.gap = '5px';
-      actionButtonsDiv.style.flexWrap = 'wrap';
-      
-      // JSON breakdown button
-      if (isJSON) {
-        const jsonButton = document.createElement('button');
-        jsonButton.textContent = '🔍 Break Down JSON';
-        jsonButton.style.padding = '2px 8px';
-        jsonButton.style.fontSize = '11px';
-        jsonButton.style.cursor = 'pointer';
-        jsonButton.style.backgroundColor = '#4CAF50';
-        jsonButton.style.color = 'white';
-        jsonButton.style.border = 'none';
-        jsonButton.style.borderRadius = '3px';
-        jsonButton.title = 'Expand JSON structure';
-        
-        jsonButton.addEventListener('click', () => {
-          const existingBreakdown = payloadDiv.querySelector(`#jsonBreakdown-${escapeId(currentPath)}`);
-          if (existingBreakdown) {
-            existingBreakdown.remove();
-            jsonButton.textContent = '🔍 Break Down JSON';
-          } else {
-            try {
-              const jsonData = JSON.parse(payloadStr);
-              const breakdownDiv = document.createElement('div');
-              breakdownDiv.id = `jsonBreakdown-${escapeId(currentPath)}`;
-              renderJSONBreakdown(breakdownDiv, jsonData, currentPath, level + 1);
-              payloadDiv.appendChild(breakdownDiv);
-              jsonButton.textContent = '🔽 Hide JSON';
-            } catch (err) {
-              console.error('Failed to parse JSON:', err);
-              // Show error to user
-              const errorDiv = document.createElement('div');
-              errorDiv.style.color = 'red';
-              errorDiv.style.fontSize = '11px';
-              errorDiv.style.marginTop = '5px';
-              errorDiv.textContent = `Error parsing JSON: ${err.message}`;
-              payloadDiv.appendChild(errorDiv);
-              // Remove error after 3 seconds
-              setTimeout(() => errorDiv.remove(), 3000);
-            }
-          }
-        });
-        
-        actionButtonsDiv.appendChild(jsonButton);
-      }
-      
-      // Nested JSON breakdown button
-      if (nestedJSONData) {
-        const nestedJsonButton = document.createElement('button');
-        nestedJsonButton.textContent = '🔍 Extract JSON';
-        nestedJsonButton.style.padding = '2px 8px';
-        nestedJsonButton.style.fontSize = '11px';
-        nestedJsonButton.style.cursor = 'pointer';
-        nestedJsonButton.style.backgroundColor = '#9C27B0';
-        nestedJsonButton.style.color = 'white';
-        nestedJsonButton.style.border = 'none';
-        nestedJsonButton.style.borderRadius = '3px';
-        nestedJsonButton.title = 'Extract and expand nested JSON';
-        
-        nestedJsonButton.addEventListener('click', () => {
-          const existingBreakdown = payloadDiv.querySelector(`#nestedJsonBreakdown-${escapeId(currentPath)}`);
-          if (existingBreakdown) {
-            existingBreakdown.remove();
-            nestedJsonButton.textContent = '🔍 Extract JSON';
-          } else {
-            const breakdownDiv = document.createElement('div');
-            breakdownDiv.id = `nestedJsonBreakdown-${escapeId(currentPath)}`;
-            renderJSONBreakdown(breakdownDiv, nestedJSONData, `${currentPath}.extracted`, level + 1);
-            payloadDiv.appendChild(breakdownDiv);
-            nestedJsonButton.textContent = '🔽 Hide JSON';
-          }
-        });
-        
-        actionButtonsDiv.appendChild(nestedJsonButton);
-      }
-      
-      // Image preview button
-      if (imageCheck.isImage) {
-        const imageButton = document.createElement('button');
-        imageButton.textContent = '🖼️ Show Image';
-        imageButton.style.padding = '2px 8px';
-        imageButton.style.fontSize = '11px';
-        imageButton.style.cursor = 'pointer';
-        imageButton.style.backgroundColor = '#2196F3';
-        imageButton.style.color = 'white';
-        imageButton.style.border = 'none';
-        imageButton.style.borderRadius = '3px';
-        imageButton.title = 'Display image preview';
-        
-        imageButton.addEventListener('click', () => {
-          const existingImage = payloadDiv.querySelector(`#imagePreview-${escapeId(currentPath)}`);
-          if (existingImage) {
-            existingImage.remove();
-            imageButton.textContent = '🖼️ Show Image';
-          } else {
-            const img = document.createElement('img');
-            img.id = `imagePreview-${escapeId(currentPath)}`;
-            img.src = imageCheck.src!;
-            img.alt = 'Base64 Image';
-            img.style.maxWidth = '400px';
-            img.style.maxHeight = '300px';
-            img.style.display = 'block';
-            img.style.margin = '8px 0';
-            img.style.border = '1px solid #ddd';
-            img.style.borderRadius = '4px';
-            payloadDiv.appendChild(img);
-            imageButton.textContent = '🖼️ Hide Image';
-          }
-        });
-        
-        actionButtonsDiv.appendChild(imageButton);
-      }
-      
-      // HTML preview button
-      if (isHTML) {
-        const htmlButton = document.createElement('button');
-        htmlButton.textContent = '🌐 Show HTML';
-        htmlButton.style.padding = '2px 8px';
-        htmlButton.style.fontSize = '11px';
-        htmlButton.style.cursor = 'pointer';
-        htmlButton.style.backgroundColor = '#FF9800';
-        htmlButton.style.color = 'white';
-        htmlButton.style.border = 'none';
-        htmlButton.style.borderRadius = '3px';
-        htmlButton.title = 'Display HTML preview';
-        
-        htmlButton.addEventListener('click', () => {
-          const existingHTML = payloadDiv.querySelector(`#htmlPreview-${escapeId(currentPath)}`);
-          if (existingHTML) {
-            existingHTML.remove();
-            htmlButton.textContent = '🌐 Show HTML';
-          } else {
-            try {
-              const htmlContainer = document.createElement('div');
-              htmlContainer.id = `htmlPreview-${escapeId(currentPath)}`;
-              renderHTMLContent(htmlContainer, payloadStr, currentPath);
-              payloadDiv.appendChild(htmlContainer);
-              htmlButton.textContent = '🌐 Hide HTML';
-            } catch (err) {
-              console.error('Failed to render HTML:', err);
-              // Show error to user
-              const errorDiv = document.createElement('div');
-              errorDiv.style.color = 'red';
-              errorDiv.style.fontSize = '11px';
-              errorDiv.style.marginTop = '5px';
-              errorDiv.textContent = `Error rendering HTML: ${err.message}`;
-              payloadDiv.appendChild(errorDiv);
-              // Remove error after 3 seconds
-              setTimeout(() => errorDiv.remove(), 3000);
-            }
-          }
-        });
-        
-        actionButtonsDiv.appendChild(htmlButton);
-      }
-      
-      // Add action buttons to payload div
-      if (actionButtonsDiv.children.length > 0) {
-        payloadDiv.appendChild(actionButtonsDiv);
-        
-        // Add a small info text
-        const infoText = document.createElement('div');
-        infoText.style.fontSize = '10px';
-        infoText.style.color = '#666';
-        infoText.style.marginTop = '3px';
-        infoText.style.fontStyle = 'italic';
-        infoText.textContent = 'Click buttons above to interact with content';
-        payloadDiv.appendChild(infoText);
-      }
-      // --- END ENHANCED CONTENT RENDERING LOGIC ---
-
-      // Add context menu listener to the inner span
-      const innerPayloadSpan = payloadValueSpan.querySelector<HTMLSpanElement>(`#payloadValue-${escapeId(currentPath)}`);
-      if (innerPayloadSpan) {
-        innerPayloadSpan.addEventListener('contextmenu', (event) => {
-          event.preventDefault();
-          console.log(`Context menu requested for path: ${currentPath}, value: ${payloadStr}`);
-          // TODO: Implement custom context menu creation and display here
-          // Need to pass currentPath and potentially event coordinates
-          showDataTypeContextMenu(event, currentPath);
-        });
-      }
-
-      // Determine initial plottability based on 'auto' type
-      const initialDataType = dataTypeMap[currentPath] || 'auto'; // Use stored type or default to auto
-      const initialParsedValue = parsePayload(payloadStr, initialDataType);
-      const isPlottable = initialParsedValue !== null;
-
-      // Store raw value AND parsed value (using initial/auto parse)
-      if (!chartDataMap[currentPath]) {
-        chartDataMap[currentPath] = [];
-      }
-      chartDataMap[currentPath].push({
-        time: Date.now(),
-        rawValue: payloadStr, // Store raw string
-        parsedValue: initialParsedValue // Store initial parse result
-      });
-
-      // Chart Button Span (visibility based on initial plottability)
-      let chartButtonSpan: HTMLSpanElement | null = null;
-      if (isPlottable) {
-        chartButtonSpan = document.createElement('span');
-        chartButtonSpan.id = `chartBtn-${escapeId(currentPath)}`;
-        chartButtonSpan.style.marginLeft = '10px';
-        chartButtonSpan.style.cursor = 'pointer';
-        chartButtonSpan.style.color = colorSelected; // Use the current color
-        chartButtonSpan.title = 'Show chart for numeric/boolean payloads';
-        chartButtonSpan.innerHTML = `
-           <svg fill="currentColor" width="16px" height="16px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-             <path d="M19,2H5C3.3,2,2,3.3,2,5v14c0,1.7,1.3,3,3,3h14c1.7,0,3-1.3,3-3V5C22,3.3,20.7,2,19,2z M8,17c0,0.6-0.4,1-1,1s-1-0.4-1-1v-4 c0-0.6,0.4-1,1-1s1,0.4,1,1V17z M13,17c0,0.6-0.4,1-1,1s-1-0.4-1-1V7 c0-0.6,0.4-1,1-1s1,0.4,1,1V17z M18,17c0,0.6-0.4,1-1,1s-1-0.4-1-1v-6 c0-0.6,0.4-1,1-1s1,0.4,1,1V17z"/>
-           </svg>`;
-      }
-
-      payloadDiv.appendChild(payloadValueSpan);
-      if (chartButtonSpan) {
-        payloadDiv.appendChild(chartButtonSpan);
-      }
-
-      // Conversion Display Div (initially empty)
-      const conversionDiv = document.createElement('div');
-      conversionDiv.id = `conversionDisplay-${escapeId(currentPath)}`;
-      conversionDiv.style.marginLeft = `${(level + 1) * 20}px`;
-      conversionDiv.style.marginTop = '3px';
-      conversionDiv.style.fontSize = '0.9em';
-      conversionDiv.style.fontFamily = 'monospace'; // Good for hex bytes
-      conversionDiv.style.color = '#aaa'; // Dim color
-
-      // Chart Area (initially hidden) - Keep this separate below the value/selector line
-      const chartAreaDiv = document.createElement('div');
-      chartAreaDiv.id = `chartDiv-${escapeId(currentPath)}`;
-      chartAreaDiv.style.display = 'none';
-      chartAreaDiv.style.marginTop = '5px';
-      chartAreaDiv.style.marginLeft = `${(level + 1) * 20}px`; // Maintain indentation
-
-      // We'll use a default color and default sizes here:
-      const defaultChartColor = colorSelected; // Reuse color variable
-      const defaultWidth = 400;
-      const defaultHeight = 200;
-
-      chartAreaDiv.innerHTML = `
-          <!-- Chart controls -->
-          <div style="margin-bottom: 5px;">
-            <label for="chartColor-${escapeId(currentPath)}">Color:</label>
-            <input type=\"color\" id=\"chartColor-${escapeId(currentPath)}\" value=\"${defaultChartColor}\" />
-
-            <label for=\"chartWidth-${escapeId(currentPath)}\" style=\"margin-left: 10px;\">Width:</label>
-            <input type=\"number\" id=\"chartWidth-${escapeId(currentPath)}\" value=\"${defaultWidth}\" style=\"width: 60px;\" />
-
-            <label for=\"chartHeight-${escapeId(currentPath)}\" style=\"margin-left: 10px;\">Height:</label>
-            <input type=\"number\" id=\"chartHeight-${escapeId(currentPath)}\" value=\"${defaultHeight}\" style=\"width: 60px;\" />
-
-            <button id=\"chartApply-${escapeId(currentPath)}\" style=\"margin-left: 10px;\">Apply</button>
-          </div>
-
-          <!-- The canvas for the chart -->
-          <canvas id=\"chartCanvas-${escapeId(currentPath)}\" width=\"${defaultWidth}\" height=\"${defaultHeight}\"></canvas>
-      `;
-
-      parent.appendChild(payloadDiv);
-      parent.appendChild(conversionDiv); // Add the conversion display div
-      parent.appendChild(chartAreaDiv);
-
-      if (chartButtonSpan) {
-        chartButtonSpan.addEventListener('click', () => {
-          toggleChart(currentPath);
-        });
-      }
+      parent.appendChild(leafContainer);
     }
   }
 }
