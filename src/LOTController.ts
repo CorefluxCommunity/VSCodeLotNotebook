@@ -31,7 +31,7 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
   readonly controllerId = 'lot-notebook-controller-id';
   readonly notebookType = 'lot-notebook';
   readonly label = 'LOT Notebook';
-  readonly supportedLanguages = ['lot', 'markdown', 'shellscript', 'bash', 'terminal'];
+  readonly supportedLanguages = ['lot', 'scl', 'markdown', 'shellscript', 'bash', 'terminal'];
 
   private readonly _controller: vscode.NotebookController;
   private _executionOrder = 0;

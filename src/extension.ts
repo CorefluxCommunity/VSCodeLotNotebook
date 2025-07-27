@@ -10,12 +10,15 @@ import * as mqtt from 'mqtt';
 import * as path from 'path'; // Needed for webview resource paths
 import * as fs from 'fs'; // Needed for reading HTML file
 import { LOTCompletionProvider } from './LOTCompletionProvider';
+import { SCLController, SCLCommands } from './SCLController';
+import { SCLCompletionProvider } from './SCLCompletionProvider';
 
 const payloadMap = new Map<string, string>();
 let corefluxEntitiesProvider: CorefluxEntitiesProvider;
 let lotCellStatusProvider: LOTCellStatusProvider;
 let connectionStatusBarItem: vscode.StatusBarItem;
 let controller: LOTController;
+let sclController: SCLController;
 let anselmoPanel: vscode.WebviewPanel | undefined = undefined;
 let anselmoSessionId: string | undefined = undefined;
 let associatedNotebookUri: vscode.Uri | undefined = undefined;
@@ -167,6 +170,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
   controller = new LOTController(context, topicProvider, payloadMap, corefluxEntitiesProvider);
   context.subscriptions.push(controller);
+
+  // --- SCL Controller ---
+  sclController = new SCLController(controller);
+  context.subscriptions.push(sclController);
 
   // --- Controller Event Listeners ---
   controller.on('connecting', () => {
@@ -1241,6 +1248,31 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   ));
 
+  // --- SCL Commands ---
+  context.subscriptions.push(
+    vscode.commands.registerCommand('scl.convertToLot', SCLCommands.convertSclToLot)
+  );
+  
+  context.subscriptions.push(
+    vscode.commands.registerCommand('scl.convertFromLot', SCLCommands.convertLotToScl)
+  );
+  
+  context.subscriptions.push(
+    vscode.commands.registerCommand('scl.format', SCLCommands.formatScl)
+  );
+  
+  context.subscriptions.push(
+    vscode.commands.registerCommand('scl.validate', SCLCommands.validateScl)
+  );
+  
+  context.subscriptions.push(
+    vscode.commands.registerCommand('scl.createModel', SCLCommands.createSclModel)
+  );
+  
+  context.subscriptions.push(
+    vscode.commands.registerCommand('scl.createAction', SCLCommands.createSclAction)
+  );
+
   // ---> NEW: Register Apply Cell Update Command <---
   context.subscriptions.push(
     vscode.commands.registerCommand('lot.applyCellUpdate', applyCellUpdateHandler)
@@ -1290,6 +1322,46 @@ export async function activate(context: vscode.ExtensionContext) {
     'F'  // Trigger on F for FROM
   );
   context.subscriptions.push(lotNotebookCompletionProvider);
+
+  // Register SCL completion providers
+  const sclCompletionProvider = vscode.languages.registerCompletionItemProvider(
+    { 
+      scheme: 'file', 
+      language: 'scl',
+      pattern: '**/*.lotnb'  // SCL can be used in LOT notebook files
+    },
+    new SCLCompletionProvider(),
+    ' ', // Trigger on space
+    'D', // Trigger on D for DEFINE
+    'W', // Trigger on W for WITH
+    'A', // Trigger on A for ADD
+    'S', // Trigger on S for SET/STORE
+    'P', // Trigger on P for PUBLISH
+    'O', // Trigger on O for ON
+    'I', // Trigger on I for IF
+    'R', // Trigger on R for REPEAT
+    'M'  // Trigger on M for MODEL
+  );
+  context.subscriptions.push(sclCompletionProvider);
+
+  const sclNotebookCompletionProvider = vscode.languages.registerCompletionItemProvider(
+    { 
+      scheme: 'vscode-notebook-cell',
+      language: 'scl'
+    },
+    new SCLCompletionProvider(),
+    ' ', // Trigger on space
+    'D', // Trigger on D for DEFINE
+    'W', // Trigger on W for WITH
+    'A', // Trigger on A for ADD
+    'S', // Trigger on S for SET/STORE
+    'P', // Trigger on P for PUBLISH
+    'O', // Trigger on O for ON
+    'I', // Trigger on I for IF
+    'R', // Trigger on R for REPEAT
+    'M'  // Trigger on M for MODEL
+  );
+  context.subscriptions.push(sclNotebookCompletionProvider);
 
   // Command to create a new LOT Notebook
   context.subscriptions.push(

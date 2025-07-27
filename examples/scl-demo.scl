@@ -1,0 +1,113 @@
+-- SCL (Simplified Configuration Language) Demonstration
+-- This file shows how to use SCL syntax which translates to LOT
+
+-- ============================================================================
+-- MODELS - Define data structures for MQTT messages
+-- ============================================================================
+
+DEFINE MODEL KafkaMessage COLLAPSED
+    ADD STRING "componentId"
+    ADD STRING "topic"
+    ADD OBJECT "payload"
+
+DEFINE MODEL MachineData WITH TOPIC "Simulator/Machine/+/Data"
+    ADD "energy" WITH TOPIC "raw_data/+" AS TRIGGER
+    ADD "device_name" WITH REPLACE "+" WITH TOPIC POSITION 2 IN "+"
+    ADD "energy_wh" WITH (energy * 1000)
+    ADD "production_status" WITH (IF energy > 5 THEN "active" ELSE "inactive")
+    ADD "production_count" WITH (IF production_status EQUALS "active" THEN (production_count + 1) ELSE 0)
+    ADD "stoppage" WITH (IF production_status EQUALS "inactive" THEN 1 ELSE 0)
+    ADD "maintenance_alert" WITH (IF energy > 50 THEN TRUE ELSE FALSE)
+    ADD "timestamp" WITH TIMESTAMP "UTC"
+    STORE IN "mongo_route"
+        WITH TABLE "MachineProductionData"
+
+DEFINE MODEL SensorAggregation WITH TOPIC "Sensors/+/Aggregated"
+    ADD "temperature" WITH TOPIC "sensor/+/temperature" AS TRIGGER
+    ADD "humidity" WITH TOPIC "sensor/+/humidity" AS TRIGGER
+    ADD "pressure" WITH TOPIC "sensor/+/pressure" AS TRIGGER
+    ADD "sensor_id" WITH REPLACE "+" WITH TOPIC POSITION 2 IN "+"
+    ADD "temp_fahrenheit" WITH ((temperature * 9/5) + 32)
+    ADD "comfort_index" WITH ((temp_fahrenheit + humidity) / 2)
+    ADD "alert_level" WITH (IF comfort_index > 80 THEN "high" ELSE IF comfort_index > 60 THEN "medium" ELSE "low")
+    ADD "timestamp" WITH TIMESTAMP "UTC"
+    STORE IN "postgres_route"
+        WITH TABLE "SensorReadings"
+
+-- ============================================================================
+-- ACTIONS - Define event-driven processing logic
+-- ============================================================================
+
+DEFINE ACTION ProcessComponentsPayload
+ON TOPIC "Raw/Components/+/+" DO
+    SET "systemId" WITH (GET JSON "info" IN PAYLOAD AS STRING)
+    SET "topicv" WITH ("Components/" + TOPIC POSITION 3 + "/" + TOPIC POSITION 4 + "/" + {systemId})
+    
+    PUBLISH MODEL KafkaMessage TO ({topicv}+"/Unit1") WITH
+        componentId = (TOPIC POSITION 3 + "_" + TOPIC POSITION 4 + "_" + {systemId} + "_" + "Unit1")
+        topic = ({topicv}+"/Unit1")
+        payload = (GET JSON "Unit1" IN PAYLOAD AS STRING)
+    
+    PUBLISH MODEL KafkaMessage TO ({topicv}+"/Unit2") WITH
+        componentId = (TOPIC POSITION 3 + "_" + TOPIC POSITION 4 + "_" + {systemId} + "_" + "Unit2")
+        topic = ({topicv}+"/Unit2")
+        payload = (GET JSON "Unit2" IN PAYLOAD AS STRING)
+
+DEFINE ACTION ProcessComponentsPayloadLoop
+ON TOPIC "Raw/Components/+/+" DO
+    SET "systemId" WITH (GET JSON "info" IN PAYLOAD AS STRING)
+    SET "counter" WITH 1
+    REPEAT
+        SET "unitName" WITH "Unit" + {counter}
+        SET "topicv" WITH ("Components/" + TOPIC POSITION 3 + "/" + TOPIC POSITION 4 + "/" + {systemId})
+        
+        IF(GET JSON {unitName} IN PAYLOAD AS STRING NOT EQUALS "null") THEN
+            PUBLISH MODEL KafkaMessage TO ({topicv}+"/"+{unitName}) WITH
+                componentId = (TOPIC POSITION 3 + "_" + TOPIC POSITION 4 + "_" + {systemId} + "_" + {unitName})
+                topic = ({topicv}+"/"+{unitName})
+                payload = (GET JSON {unitName} IN PAYLOAD AS STRING)
+            SET "counter" WITH {counter}+1
+        ELSE
+            SET "counter" WITH 61
+    UNTIL ({counter} > 60)
+
+DEFINE ACTION PeriodicDataProcessor
+ON EVERY 30 SECONDS DO
+    SET "timestamp" WITH TIMESTAMP "UTC"
+    SET "status" WITH "healthy"
+    PUBLISH MODEL MachineData TO ("system/health/status") WITH
+        energy = 25.5
+        device_name = "SystemMonitor"
+        energy_wh = 25500
+        production_status = "active"
+        timestamp = {timestamp}
+
+-- ============================================================================
+-- DATABASE ROUTES - Define database connections
+-- ============================================================================
+
+DEFINE ROUTE mongo_route WITH TYPE MONGODB
+    ADD MONGODB_CONFIG
+        WITH CONNECTION_STRING "mongodb+srv://username:password@cluster-uri/database?tls=true&authSource=admin"
+        WITH DATABASE "admin"
+
+DEFINE ROUTE postgres_route WITH TYPE POSTGRESQL
+    ADD POSTGRESQL_CONFIG
+        WITH CONNECTION_STRING "postgresql://username:password@host:port/database"
+        WITH DATABASE "iot_data"
+
+DEFINE ROUTE mysql_route WITH TYPE MYSQL
+    ADD MYSQL_CONFIG
+        WITH CONNECTION_STRING "mysql://username:password@host:port/database"
+        WITH DATABASE "device_management"
+
+DEFINE ROUTE influxdb_route WITH TYPE INFLUXDB
+    ADD INFLUXDB_CONFIG
+        WITH CONNECTION_STRING "http://host:port"
+        WITH DATABASE "environmental_data"
+        WITH TOKEN "your_influxdb_token"
+
+DEFINE ROUTE timescaledb_route WITH TYPE TIMESCALEDB
+    ADD TIMESCALEDB_CONFIG
+        WITH CONNECTION_STRING "postgresql://username:password@host:port/database"
+        WITH DATABASE "energy_metrics"

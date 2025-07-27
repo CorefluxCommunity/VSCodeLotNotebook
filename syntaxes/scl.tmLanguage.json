@@ -1,0 +1,172 @@
+{
+  "scopeName": "source.scl",
+  "name": "SCL",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#keywords" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#operators" },
+    { "include": "#functions" },
+    { "include": "#topic-patterns" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-dash.scl",
+          "match": "--.*$"
+        },
+        {
+          "name": "comment.line.double-slash.scl",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.scl",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.define.scl",
+          "match": "\\b(DEFINE)\\b"
+        },
+        {
+          "name": "keyword.control.entity.scl",
+          "match": "\\b(MODEL|ACTION|RULE|ROUTE|VISU)\\b"
+        },
+        {
+          "name": "keyword.control.flow.scl",
+          "match": "\\b(ON|DO|IF|THEN|ELSE|REPEAT|UNTIL|WHILE)\\b"
+        },
+        {
+          "name": "keyword.control.trigger.scl",
+          "match": "\\b(TOPIC|EVERY|TIMESTAMP)\\b"
+        },
+        {
+          "name": "keyword.control.action.scl",
+          "match": "\\b(SET|GET|PUBLISH|KEEP|ADD|STORE|FILTER|REGEX)\\b"
+        },
+        {
+          "name": "keyword.control.modifier.scl",
+          "match": "\\b(WITH|IN|AS|TO|COLLAPSED)\\b"
+        },
+        {
+          "name": "keyword.control.database.scl",
+          "match": "\\b(MONGODB|POSTGRESQL|MYSQL|INFLUXDB|TIMESCALEDB)\\b"
+        },
+        {
+          "name": "keyword.control.config.scl",
+          "match": "\\b(CONNECTION_STRING|DATABASE|TABLE|TOKEN|MONGODB_CONFIG|POSTGRESQL_CONFIG|MYSQL_CONFIG|INFLUXDB_CONFIG|TIMESCALEDB_CONFIG)\\b"
+        },
+        {
+          "name": "keyword.control.time.scl",
+          "match": "\\b(SECOND|SECONDS|MINUTE|MINUTES|HOUR|HOURS|DAY|DAYS|WEEK|WEEKS|MONTH|MONTHS|YEAR|YEARS)\\b"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.scl",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.scl",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.scl",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.scl",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.integer.scl",
+          "match": "\\b\\d+\\b"
+        },
+        {
+          "name": "constant.numeric.float.scl",
+          "match": "\\b\\d+\\.\\d+\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.comparison.scl",
+          "match": "(==|!=|<=|>=|<|>|EQUALS|NOT|AND|OR)"
+        },
+        {
+          "name": "keyword.operator.arithmetic.scl",
+          "match": "(\\+|\\-|\\*|\\/|%)"
+        },
+        {
+          "name": "keyword.operator.assignment.scl",
+          "match": "(=)"
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "name": "entity.name.function.scl",
+          "match": "\\b(GET|JSON|REPLACE|POSITION|TIMESTAMP)\\b"
+        }
+      ]
+    },
+    "topic-patterns": {
+      "patterns": [
+        {
+          "name": "string.regexp.scl",
+          "match": "\"[^\"]*\\+[^\"]*\"",
+          "captures": {
+            "0": {
+              "name": "string.quoted.double.topic-pattern.scl"
+            }
+          }
+        },
+        {
+          "name": "string.regexp.scl",
+          "match": "\"[^\"]*#[^\"]*\"",
+          "captures": {
+            "0": {
+              "name": "string.quoted.double.topic-wildcard.scl"
+            }
+          }
+        }
+      ]
+    },
+    "data-types": {
+      "patterns": [
+        {
+          "name": "support.type.scl",
+          "match": "\\b(STRING|OBJECT|NUMBER|BOOLEAN|ARRAY|DOUBLE|INT|BOOL)\\b"
+        }
+      ]
+    },
+    "variables": {
+      "patterns": [
+        {
+          "name": "variable.other.scl",
+          "match": "\\{[^}]+\\}"
+        }
+      ]
+    }
+  }
+}

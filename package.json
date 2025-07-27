@@ -14,6 +14,7 @@
 	"activationEvents": [
 		"onNotebook:lot-notebook",
 		"onLanguage:lot",
+		"onLanguage:scl",
 		"onCommand:lot-notebook.create",
 		"onCommand:lot-notebook.new",
 		"onView:corefluxEntitiesView"
@@ -167,6 +168,36 @@
 				"command": "lot-notebook.new",
 				"title": "LOT Notebook: New LOT Notebook",
 				"category": "LOT Notebook"
+			},
+			{
+				"command": "scl.convertToLot",
+				"title": "Convert SCL to LOT",
+				"category": "SCL"
+			},
+			{
+				"command": "scl.convertFromLot",
+				"title": "Convert LOT to SCL",
+				"category": "SCL"
+			},
+			{
+				"command": "scl.format",
+				"title": "Format SCL Code",
+				"category": "SCL"
+			},
+			{
+				"command": "scl.validate",
+				"title": "Validate SCL Syntax",
+				"category": "SCL"
+			},
+			{
+				"command": "scl.createModel",
+				"title": "Create SCL Model",
+				"category": "SCL"
+			},
+			{
+				"command": "scl.createAction",
+				"title": "Create SCL Action",
+				"category": "SCL"
 			}
 		],
 		"notebooks": [
@@ -220,6 +251,18 @@
 				"configuration": "./language-configuration.json"
 			},
 			{
+				"id": "scl",
+				"aliases": [
+					"SCL",
+					"Simplified Configuration Language",
+					"scl"
+				],
+				"extensions": [
+					".scl"
+				],
+				"configuration": "./language-configuration.json"
+			},
+			{
 				"id": "shellscript",
 				"aliases": [
 					"Shell Script",
@@ -252,6 +295,11 @@
 				"path": "./syntaxes/lot.tmLanguage.json"
 			},
 			{
+				"language": "scl",
+				"scopeName": "source.scl",
+				"path": "./syntaxes/scl.tmLanguage.json"
+			},
+			{
 				"language": "terminal",
 				"scopeName": "source.terminal",
 				"path": "./syntaxes/terminal.tmLanguage.json"
@@ -276,6 +324,7 @@
 		},
 		"notebookCellLanguages": [
 			"lot",
+			"scl",
 			"markdown",
 			"bash",
 			"shellscript",
