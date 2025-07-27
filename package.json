@@ -168,9 +168,59 @@
 				"command": "lot-notebook.new",
 				"title": "LOT Notebook: New LOT Notebook",
 				"category": "LOT Notebook"
+			},
+			{
+				"command": "coreflux.openWalkthrough",
+				"title": "Open Getting Started Walkthrough",
+				"category": "Coreflux"
+			},
+			{
+				"command": "coreflux.createMarkdownFile",
+				"title": "Create Markdown Documentation",
+				"category": "Coreflux"
+			},
+			{
+				"command": "coreflux.connectBroker",
+				"title": "Connect to MQTT Broker",
+				"category": "Coreflux"
+			},
+			{
+				"command": "coreflux.createTimerAction",
+				"title": "Create Timer Action",
+				"category": "Coreflux"
+			},
+			{
+				"command": "coreflux.uploadAction",
+				"title": "Upload Action to Broker",
+				"category": "Coreflux"
+			},
+			{
+				"command": "coreflux.createModel",
+				"title": "Create Data Model",
+				"category": "Coreflux"
+			},
+			{
+				"command": "coreflux.createModelAction",
+				"title": "Create Model Action",
+				"category": "Coreflux"
+			},
+			{
+				"command": "coreflux.createDockerSetup",
+				"title": "Create Docker Setup",
+				"category": "Coreflux"
+			},
+			{
+				"command": "coreflux.setupGitRepo",
+				"title": "Setup Git Repository",
+				"category": "Coreflux"
 			}
 		],
-
+		"viewsWelcome": [
+			{
+				"view": "corefluxEntities",
+				"contents": "Welcome to Coreflux! Get started by creating your first LOT notebook.\n\n[Create LOT Notebook](command:lot-notebook.new)\n\n[Open Getting Started Guide](command:coreflux.openWalkthrough)\n\nLearn more about [Language of Things](https://docs.coreflux.org/lot)."
+			}
+		],
 		"notebooks": [
 			{
 				"id": "lot-notebook",
@@ -221,7 +271,6 @@
 				],
 				"configuration": "./language-configuration.json"
 			},
-
 			{
 				"id": "shellscript",
 				"aliases": [
@@ -254,7 +303,6 @@
 				"scopeName": "source.lot",
 				"path": "./syntaxes/lot.tmLanguage.json"
 			},
-
 			{
 				"language": "terminal",
 				"scopeName": "source.terminal",
@@ -262,8 +310,14 @@
 			}
 		],
 		"configuration": {
-			"title": "LOT Notebook",
+			"title": "Coreflux",
 			"properties": {
+				"coreflux.telemetryEnabled": {
+					"type": "boolean",
+					"default": false,
+					"markdownDescription": "Enable anonymous telemetry to help improve the extension. [Privacy Policy](https://coreflux.org/privacy)",
+					"scope": "application"
+				},
 				"lotNotebook.experimentalFeatures": {
 					"type": "object",
 					"title": "Experimental Features",
@@ -278,6 +332,123 @@
 				}
 			}
 		},
+		"walkthroughs": [
+			{
+				"id": "coreflux.onboarding",
+				"title": "Get Started with Coreflux",
+				"description": "Learn how to build IoT solutions with Language of Things (LOT)",
+				"steps": [
+					{
+						"id": "create-lot-notebook",
+						"title": "Create your first LOT notebook file",
+						"description": "Start by creating a .lotnb file to begin working with Language of Things.\n\n[Create LOT Notebook](command:lot-notebook.new)",
+						"media": {
+							"image": "media/walkthrough/create-notebook.png",
+							"altText": "Creating a new LOT notebook"
+						},
+						"completionEvents": [
+							"onCommand:lot-notebook.new"
+						]
+					},
+					{
+						"id": "create-markdown-file",
+						"title": "Create your first Markdown file",
+						"description": "Document your LOT project with Markdown for clear explanations.\n\n[Create Markdown File](command:coreflux.createMarkdownFile)",
+						"media": {
+							"image": "media/walkthrough/create-markdown.png",
+							"altText": "Creating a Markdown documentation file"
+						},
+						"completionEvents": [
+							"onCommand:coreflux.createMarkdownFile"
+						]
+					},
+					{
+						"id": "connect-broker",
+						"title": "Connect to your broker",
+						"description": "Establish a connection to an MQTT broker to start publishing data.\n\n[Connect to Broker](command:coreflux.connectBroker)",
+						"media": {
+							"image": "media/walkthrough/connect-broker.png",
+							"altText": "Connecting to MQTT broker"
+						},
+						"completionEvents": [
+							"onCommand:coreflux.connectBroker"
+						]
+					},
+					{
+						"id": "create-timer-action",
+						"title": "Create an Action that runs every 1 second",
+						"description": "Build your first automated action with a timer trigger.\n\n[Create Timer Action](command:coreflux.createTimerAction)",
+						"media": {
+							"image": "media/walkthrough/timer-action.png",
+							"altText": "Creating a timer-based action"
+						},
+						"completionEvents": [
+							"onCommand:coreflux.createTimerAction"
+						]
+					},
+					{
+						"id": "upload-action",
+						"title": "Upload the Action to the broker",
+						"description": "Deploy your action to the MQTT broker for execution.\n\n[Upload Action](command:coreflux.uploadAction)",
+						"media": {
+							"image": "media/walkthrough/upload-action.png",
+							"altText": "Uploading action to broker"
+						},
+						"completionEvents": [
+							"onCommand:coreflux.uploadAction"
+						]
+					},
+					{
+						"id": "create-model",
+						"title": "Create a MODEL",
+						"description": "Define a data model to structure your IoT information.\n\n[Create Model](command:coreflux.createModel)",
+						"media": {
+							"image": "media/walkthrough/create-model.png",
+							"altText": "Creating a data model"
+						},
+						"completionEvents": [
+							"onCommand:coreflux.createModel"
+						]
+					},
+					{
+						"id": "create-model-action",
+						"title": "Create an Action that publishes the MODEL",
+						"description": "Build an action that publishes data using your model structure.\n\n[Create Model Action](command:coreflux.createModelAction)",
+						"media": {
+							"image": "media/walkthrough/model-action.png",
+							"altText": "Creating an action that uses a model"
+						},
+						"completionEvents": [
+							"onCommand:coreflux.createModelAction"
+						]
+					},
+					{
+						"id": "create-docker-compose",
+						"title": "Create a shell script with Docker Compose",
+						"description": "Set up a complete local development environment.\n\n[Create Docker Setup](command:coreflux.createDockerSetup)",
+						"media": {
+							"image": "media/walkthrough/docker-compose.png",
+							"altText": "Setting up Docker Compose"
+						},
+						"completionEvents": [
+							"onCommand:coreflux.createDockerSetup"
+						]
+					},
+					{
+						"id": "upload-to-github",
+						"title": "Upload the project to GitHub",
+						"description": "Share your LOT project with version control.\n\n[Setup Git Repository](command:coreflux.setupGitRepo)",
+						"media": {
+							"image": "media/walkthrough/github-upload.png",
+							"altText": "Uploading to GitHub"
+						},
+						"completionEvents": [
+							"onCommand:coreflux.setupGitRepo"
+						]
+					}
+				]
+			}
+		],
 		"notebookCellLanguages": [
 			"lot",
 			"scl",
@@ -298,6 +469,7 @@
 	"devDependencies": {
 		"@types/node": "14.x",
 		"@types/node-fetch": "^2.6.12",
+		"@types/uuid": "^9.0.8",
 		"@types/vscode": "^1.85.0",
 		"@typescript-eslint/eslint-plugin": "^5.58.0",
 		"@typescript-eslint/parser": "^5.58.0",
@@ -313,7 +485,8 @@
 		"mermaid": "^10.9.0",
 		"mqtt": "^5.10.3",
 		"node-fetch": "^3.3.2",
-		"tree-kill": "^1.2.2"
+		"tree-kill": "^1.2.2",
+		"uuid": "^9.0.1"
 	},
 	"extensionDependencies": []
 }
