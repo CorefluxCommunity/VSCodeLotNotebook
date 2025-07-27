@@ -12,6 +12,8 @@ import * as fs from 'fs'; // Needed for reading HTML file
 import { LOTCompletionProvider } from './LOTCompletionProvider';
 import { SCLController, SCLCommands } from './SCLController';
 import { SCLCompletionProvider } from './SCLCompletionProvider';
+import { LanguageTranslationHandler } from './LanguageTranslationHandler';
+import { TranslationStatusProvider } from './TranslationStatusProvider';
 
 const payloadMap = new Map<string, string>();
 let corefluxEntitiesProvider: CorefluxEntitiesProvider;
@@ -1249,12 +1251,21 @@ export async function activate(context: vscode.ExtensionContext) {
   ));
 
   // --- SCL Commands ---
+  
+  // Initialize translation status provider
+  const translationStatusProvider = new TranslationStatusProvider();
+  context.subscriptions.push(translationStatusProvider);
+  
   context.subscriptions.push(
     vscode.commands.registerCommand('scl.convertToLot', SCLCommands.convertSclToLot)
   );
   
   context.subscriptions.push(
     vscode.commands.registerCommand('scl.convertFromLot', SCLCommands.convertLotToScl)
+  );
+  
+  context.subscriptions.push(
+    vscode.commands.registerCommand('scl.translateCell', LanguageTranslationHandler.translateCurrentCell)
   );
   
   context.subscriptions.push(

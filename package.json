@@ -200,32 +200,20 @@
 				"command": "scl.createAction",
 				"title": "Create SCL Action",
 				"category": "SCL"
+			},
+			{
+				"command": "scl.translateCell",
+				"title": "Translate Cell (SCL ↔ LOT)",
+				"category": "SCL"
 			}
 		],
-		"menus": {
-			"editor/cell/title": [
-				{
-					"when": "notebookCellType == code && notebookCellLangId == scl",
-					"command": "scl.convertToLot",
-					"group": "inline@1"
-				},
-				{
-					"when": "notebookCellType == code && notebookCellLangId == lot",
-					"command": "scl.convertFromLot", 
-					"group": "inline@1"
-				}
-			],
-			"commandPalette": [
-				{
-					"command": "scl.convertToLot",
-					"when": "notebookCellType == code && notebookCellLangId == scl"
-				},
-				{
-					"command": "scl.convertFromLot",
-					"when": "notebookCellType == code && notebookCellLangId == lot"
-				}
-			]
-		},
+		"keybindings": [
+			{
+				"command": "scl.translateCell",
+				"key": "ctrl+shift+t",
+				"when": "notebookCellType == code && (notebookCellLangId == scl || notebookCellLangId == lot)"
+			}
+		],
 		"notebooks": [
 			{
 				"id": "lot-notebook",
