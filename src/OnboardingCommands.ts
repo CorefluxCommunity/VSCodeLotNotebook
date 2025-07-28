@@ -21,37 +21,44 @@ export class OnboardingCommands {
   public async createMarkdownFile(): Promise<void> {
     try {
       const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-      let filePath: vscode.Uri;
-      let createdIn: 'workspace' | 'untitled' | 'outside-workspace';
-
+      let notebookUri: vscode.Uri;
+      
       if (workspaceFolder) {
-        filePath = vscode.Uri.joinPath(workspaceFolder.uri, 'README.md');
-        createdIn = 'workspace';
+        notebookUri = vscode.Uri.joinPath(workspaceFolder.uri, 'walkthrough.lotnb');
       } else {
-        // Create untitled file
-        const doc = await vscode.workspace.openTextDocument({
-          language: 'markdown',
-          content: this.getMarkdownTemplate()
-        });
-        await vscode.window.showTextDocument(doc);
-        
-        await this.onboardingService.completeStep('create-markdown-file');
-        await this.telemetryService.emitNewFileEvent('README.md', 'untitled');
+        vscode.window.showWarningMessage('Please open a workspace folder first to use the walkthrough.');
         return;
       }
 
-      const content = this.getMarkdownTemplate();
-      await vscode.workspace.fs.writeFile(filePath, Buffer.from(content));
+      // Check if walkthrough.lotnb already exists
+      let notebookDoc: vscode.NotebookDocument;
+      try {
+        notebookDoc = await vscode.workspace.openNotebookDocument(notebookUri);
+      } catch {
+        vscode.window.showWarningMessage('Please create a LOT notebook first using the walkthrough.');
+        return;
+      }
+
+      // Add markdown cell with walkthrough explanation
+      const markdownContent = this.getWalkthroughExplanationTemplate();
+      const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Markup, markdownContent, 'markdown');
+      const edit = new vscode.WorkspaceEdit();
+      const notebookEdit = new vscode.NotebookEdit(
+        new vscode.NotebookRange(notebookDoc.cellCount, notebookDoc.cellCount),
+        [cellData]
+      );
+      edit.set(notebookDoc.uri, [notebookEdit]);
+      await vscode.workspace.applyEdit(edit);
       
-      const doc = await vscode.workspace.openTextDocument(filePath);
-      await vscode.window.showTextDocument(doc);
+      // Show the notebook
+      await vscode.window.showNotebookDocument(notebookDoc);
 
       await this.onboardingService.completeStep('create-markdown-file');
-      await this.telemetryService.emitNewFileEvent('README.md', createdIn);
+      await this.telemetryService.emitNewFileEvent('walkthrough.lotnb', 'workspace');
 
-      vscode.window.showInformationMessage('✅ Created README.md documentation file!');
+      vscode.window.showInformationMessage('✅ Added walkthrough explanation to your notebook!');
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to create markdown file: ${error}`);
+      vscode.window.showErrorMessage(`Failed to create markdown cell: ${error}`);
     }
   }
 
@@ -539,6 +546,61 @@ docker-compose down -v
 - **Permission errors:** Run \`chmod +x start-coreflux.sh\`
 
 For more help, visit [docs.coreflux.org](https://docs.coreflux.org)
+`;
+  }
+
+  private getWalkthroughExplanationTemplate(): string {
+    return `# 🚀 Coreflux Walkthrough Guide
+
+Welcome to the Language of Things (LOT) walkthrough! This notebook will guide you through building your first IoT solution step by step.
+
+## 📋 What You'll Learn
+
+This walkthrough will teach you how to:
+
+1. **Create IoT Actions** - Build automated behaviors that respond to events
+2. **Define Data Models** - Structure your IoT data for better organization
+3. **Connect to MQTT Brokers** - Establish real-time communication
+4. **Deploy to Production** - Upload your solutions to live environments
+5. **Set Up Local Development** - Create a complete development environment
+
+## 🎯 Walkthrough Structure
+
+Each cell in this notebook represents a step in your IoT journey:
+
+- **Timer Actions** - Actions that run on a schedule (every second, minute, etc.)
+- **Data Models** - Structured data definitions for your IoT devices
+- **Model Actions** - Actions that publish structured data using your models
+- **Broker Connections** - Real-time MQTT communication setup
+
+## 🔧 How to Use This Notebook
+
+1. **Follow the Steps** - Execute each cell in order
+2. **Connect Your Broker** - Use the broker connection dialog
+3. **Upload Actions** - Deploy your code to the MQTT broker
+4. **Monitor Results** - Watch your IoT solution in action
+
+## 🌟 Example: Smart Office Monitor
+
+In this walkthrough, you'll build a smart office monitoring system that:
+
+- **Publishes heartbeat signals** every second
+- **Tracks sensor data** (temperature, humidity, location)
+- **Runs continuously** on your MQTT broker
+- **Provides real-time insights** into your environment
+
+## 📚 Next Steps
+
+After completing this walkthrough, you'll be ready to:
+
+- Build more complex IoT solutions
+- Integrate with real sensors and devices
+- Create custom data models for your use cases
+- Deploy to production Coreflux environments
+
+---
+
+*Ready to start? Let's build something amazing! 🎉*
 `;
   }
 

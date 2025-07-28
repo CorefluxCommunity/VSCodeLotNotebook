@@ -357,11 +357,11 @@
 					},
 					{
 						"id": "create-markdown-file",
-						"title": "Create your first Markdown file",
-						"description": "Document your LOT project with Markdown for clear explanations.\n\n[Create Markdown File](command:coreflux.createMarkdownFile)",
+						"title": "Add walkthrough explanation",
+						"description": "Add a markdown cell with detailed explanation of the walkthrough and what you'll build.\n\n[Add Walkthrough Guide](command:coreflux.createMarkdownFile)",
 						"media": {
 							"image": "media/walkthrough/create-markdown.png",
-							"altText": "Creating a Markdown documentation file"
+							"altText": "Adding walkthrough explanation to notebook"
 						},
 						"completionEvents": [
 							"onCommand:coreflux.createMarkdownFile"
