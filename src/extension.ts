@@ -10,12 +10,21 @@ import * as mqtt from 'mqtt';
 import * as path from 'path'; // Needed for webview resource paths
 import * as fs from 'fs'; // Needed for reading HTML file
 import { LOTCompletionProvider } from './LOTCompletionProvider';
+import { SCLController, SCLCommands } from './SCLController';
+import { SCLCompletionProvider } from './SCLCompletionProvider';
+import { LanguageTranslationHandler } from './LanguageTranslationHandler';
+import { TranslationStatusProvider } from './TranslationStatusProvider';
+import { TelemetryService } from './TelemetryService';
+import { OnboardingService } from './OnboardingService';
+import { OnboardingCommands } from './OnboardingCommands';
+import { BrokerConnectionManager } from './BrokerConnectionManager';
 
 const payloadMap = new Map<string, string>();
 let corefluxEntitiesProvider: CorefluxEntitiesProvider;
 let lotCellStatusProvider: LOTCellStatusProvider;
 let connectionStatusBarItem: vscode.StatusBarItem;
 let controller: LOTController;
+let sclController: SCLController;
 let anselmoPanel: vscode.WebviewPanel | undefined = undefined;
 let anselmoSessionId: string | undefined = undefined;
 let associatedNotebookUri: vscode.Uri | undefined = undefined;
@@ -26,9 +35,20 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // --- Status Bar Item ---
   connectionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-  connectionStatusBarItem.command = 'lot-notebook.changeCredentials';
+  connectionStatusBarItem.command = 'coreflux.handleBrokerStatusClick';
   context.subscriptions.push(connectionStatusBarItem);
   updateStatusBar('disconnected'); // Initial state
+
+  // --- Telemetry & Onboarding Services ---
+  const telemetryService = TelemetryService.getInstance(context);
+  const onboardingService = OnboardingService.getInstance(context, telemetryService);
+  const onboardingCommands = new OnboardingCommands(onboardingService, telemetryService);
+
+  // Check for first run and show walkthrough
+  await onboardingService.checkFirstRun();
+
+  // Emit startup telemetry event
+  await telemetryService.emitStartupEvent();
 
   // --- Tree Providers ---
   const topicProvider = new MqttTopicProvider(context, payloadMap);
@@ -142,20 +162,10 @@ export async function activate(context: vscode.ExtensionContext) {
   });
   context.subscriptions.push(createNotebookCommand);
 
+  // Legacy credentials command - now handled by BrokerConnectionManager
   const changeCredsCommand = vscode.commands.registerCommand(
     'lot-notebook.changeCredentials',
-    async () => {
-      try {
-        await changeBrokerCredentials(context);
-        vscode.window.showInformationMessage('MQTT credentials updated. Connection will be attempted on next action or reconnect.');
-        // Force disconnect if already connected, so next action reconnects with new creds
-        await controller.disconnectAndReconnect(); // Force disconnect/reconnect attempt now
-
-      } catch (err: any) {
-        vscode.window.showErrorMessage(`Failed to change credentials: ${err.message}`);
-        // Status bar update will happen via disconnect event if connection fails
-      }
-    }
+    () => brokerConnectionManager.showConnectionDialog()
   );
   
   context.subscriptions.push(changeCredsCommand);
@@ -168,17 +178,32 @@ export async function activate(context: vscode.ExtensionContext) {
   controller = new LOTController(context, topicProvider, payloadMap, corefluxEntitiesProvider);
   context.subscriptions.push(controller);
 
+  // --- Broker Connection Manager ---
+  const brokerConnectionManager = BrokerConnectionManager.getInstance(controller);
+
+  // --- SCL Controller ---
+  sclController = new SCLController(controller);
+  context.subscriptions.push(sclController);
+
   // --- Controller Event Listeners ---
   controller.on('connecting', () => {
     console.log('Extension received connecting event.');
     updateStatusBar('connecting');
   });
 
-  controller.on('connected', (client: mqtt.MqttClient, brokerUrl: string) => {
+  controller.on('connected', async (client: mqtt.MqttClient, brokerUrl: string) => {
     console.log(`Extension received connected event for ${brokerUrl}`);
     setupEntityProviderMqttHandlers(client);
     updateStatusBar('connected', brokerUrl);
     lotCellStatusProvider?.refreshAll();
+    
+    // Emit telemetry for successful broker connection
+    const tlsUsed = brokerUrl.startsWith('mqtts://') || brokerUrl.startsWith('wss://');
+    const authenticationUsed = false; // TODO: Detect if authentication was used
+    await telemetryService.emitBrokerConnectedEvent(brokerUrl, tlsUsed, authenticationUsed);
+    
+    // Complete onboarding step
+    await onboardingService.completeStep('connect-broker');
   });
 
   controller.on('disconnected', () => {
@@ -1241,6 +1266,47 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   ));
 
+  // --- SCL Commands (HIDDEN - Keep code for later activation) ---
+  
+  // TODO: Re-enable for onboarding procedures later
+  const enableSCLFeatures = false; // Set to true to re-enable SCL functionality
+  
+  if (enableSCLFeatures) {
+    // Initialize translation handlers
+    const translationStatusProvider = new TranslationStatusProvider();
+    const languageTranslationHandler = new LanguageTranslationHandler();
+    context.subscriptions.push(translationStatusProvider);
+    context.subscriptions.push(languageTranslationHandler);
+    
+    context.subscriptions.push(
+      vscode.commands.registerCommand('scl.convertToLot', SCLCommands.convertSclToLot)
+    );
+    
+    context.subscriptions.push(
+      vscode.commands.registerCommand('scl.convertFromLot', SCLCommands.convertLotToScl)
+    );
+    
+    context.subscriptions.push(
+      vscode.commands.registerCommand('scl.translateCell', LanguageTranslationHandler.translateCurrentCell)
+    );
+    
+    context.subscriptions.push(
+      vscode.commands.registerCommand('scl.format', SCLCommands.formatScl)
+    );
+    
+    context.subscriptions.push(
+      vscode.commands.registerCommand('scl.validate', SCLCommands.validateScl)
+    );
+    
+    context.subscriptions.push(
+      vscode.commands.registerCommand('scl.createModel', SCLCommands.createSclModel)
+    );
+    
+    context.subscriptions.push(
+      vscode.commands.registerCommand('scl.createAction', SCLCommands.createSclAction)
+    );
+  }
+
   // ---> NEW: Register Apply Cell Update Command <---
   context.subscriptions.push(
     vscode.commands.registerCommand('lot.applyCellUpdate', applyCellUpdateHandler)
@@ -1291,6 +1357,48 @@ export async function activate(context: vscode.ExtensionContext) {
   );
   context.subscriptions.push(lotNotebookCompletionProvider);
 
+  // SCL completion providers (HIDDEN - Keep code for later activation)
+  if (enableSCLFeatures) {
+    const sclCompletionProvider = vscode.languages.registerCompletionItemProvider(
+      { 
+        scheme: 'file', 
+        language: 'scl',
+        pattern: '**/*.lotnb'  // SCL can be used in LOT notebook files
+      },
+      new SCLCompletionProvider(),
+      ' ', // Trigger on space
+      'D', // Trigger on D for DEFINE
+      'W', // Trigger on W for WITH
+      'A', // Trigger on A for ADD
+      'S', // Trigger on S for SET/STORE
+      'P', // Trigger on P for PUBLISH
+      'O', // Trigger on O for ON
+      'I', // Trigger on I for IF
+      'R', // Trigger on R for REPEAT
+      'M'  // Trigger on M for MODEL
+    );
+    context.subscriptions.push(sclCompletionProvider);
+
+    const sclNotebookCompletionProvider = vscode.languages.registerCompletionItemProvider(
+      { 
+        scheme: 'vscode-notebook-cell',
+        language: 'scl'
+      },
+      new SCLCompletionProvider(),
+      ' ', // Trigger on space
+      'D', // Trigger on D for DEFINE
+      'W', // Trigger on W for WITH
+      'A', // Trigger on A for ADD
+      'S', // Trigger on S for SET/STORE
+      'P', // Trigger on P for PUBLISH
+      'O', // Trigger on O for ON
+      'I', // Trigger on I for IF
+      'R', // Trigger on R for REPEAT
+      'M'  // Trigger on M for MODEL
+    );
+    context.subscriptions.push(sclNotebookCompletionProvider);
+  }
+
   // Command to create a new LOT Notebook
   context.subscriptions.push(
     vscode.commands.registerCommand('lot-notebook.new', async () => {
@@ -1298,7 +1406,61 @@ export async function activate(context: vscode.ExtensionContext) {
       const notebookData = new vscode.NotebookData([lotCell]);
       const doc = await vscode.workspace.openNotebookDocument('lot-notebook', notebookData);
       await vscode.window.showNotebookDocument(doc);
+      
+      // Complete onboarding step if this is from the walkthrough
+      await onboardingService.completeStep('create-lot-notebook');
+      
+      // Emit telemetry for new file creation
+      const fileName = doc.uri.path.split('/').pop() || 'untitled.lotnb';
+      const createdIn = vscode.workspace.workspaceFolders?.length ? 'workspace' : 'untitled';
+      await telemetryService.emitNewFileEvent(fileName, createdIn);
     })
+  );
+
+  // --- Onboarding Commands ---
+  context.subscriptions.push(
+    vscode.commands.registerCommand('coreflux.openWalkthrough', () => onboardingCommands.openWalkthrough())
+  );
+  
+  context.subscriptions.push(
+    vscode.commands.registerCommand('coreflux.createMarkdownFile', () => onboardingCommands.createMarkdownFile())
+  );
+  
+  context.subscriptions.push(
+    vscode.commands.registerCommand('coreflux.connectBroker', () => onboardingCommands.connectBroker())
+  );
+  
+  context.subscriptions.push(
+    vscode.commands.registerCommand('coreflux.createTimerAction', () => onboardingCommands.createTimerAction())
+  );
+  
+  context.subscriptions.push(
+    vscode.commands.registerCommand('coreflux.uploadAction', () => onboardingCommands.uploadAction())
+  );
+  
+  context.subscriptions.push(
+    vscode.commands.registerCommand('coreflux.createModel', () => onboardingCommands.createModel())
+  );
+  
+  context.subscriptions.push(
+    vscode.commands.registerCommand('coreflux.createModelAction', () => onboardingCommands.createModelAction())
+  );
+  
+  context.subscriptions.push(
+    vscode.commands.registerCommand('coreflux.createDockerSetup', () => onboardingCommands.createDockerSetup())
+  );
+  
+  context.subscriptions.push(
+    vscode.commands.registerCommand('coreflux.setupGitRepo', () => onboardingCommands.setupGitRepo())
+  );
+
+  // --- Broker Connection Commands ---
+  context.subscriptions.push(
+    vscode.commands.registerCommand('coreflux.handleBrokerStatusClick', () => brokerConnectionManager.handleStatusBarClick())
+  );
+  
+  context.subscriptions.push(
+    vscode.commands.registerCommand('coreflux.disconnectBroker', () => brokerConnectionManager.disconnect())
   );
 
 
@@ -1361,15 +1523,15 @@ function updateStatusBar(status: 'connected' | 'disconnected' | 'connecting', br
   if (status === 'connected') {
     const urlToShow = brokerUrl ? ` to ${brokerUrl}` : '';
     connectionStatusBarItem.text = `$(vm-connect) MQTT: Connected${urlToShow}`;
-    connectionStatusBarItem.tooltip = `Connected to MQTT broker: ${brokerUrl || 'Unknown'}\nClick to change credentials.`;
+    connectionStatusBarItem.tooltip = `Connected to MQTT broker: ${brokerUrl || 'Unknown'}\nClick to disconnect or change broker.`;
     connectionStatusBarItem.backgroundColor = undefined;
   } else if (status === 'disconnected') {
     connectionStatusBarItem.text = `$(vm-disconnected) MQTT: Disconnected`;
-    connectionStatusBarItem.tooltip = 'MQTT broker disconnected. Click to change credentials.';
+    connectionStatusBarItem.tooltip = 'MQTT broker disconnected. Click to connect to a broker.';
     connectionStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
   } else { // connecting
     connectionStatusBarItem.text = `$(sync~spin) MQTT: Connecting...`;
-    connectionStatusBarItem.tooltip = `Attempting to connect to MQTT broker...\nClick to change credentials.`;
+    connectionStatusBarItem.tooltip = `Attempting to connect to MQTT broker...\nClick to cancel or change broker.`;
     connectionStatusBarItem.backgroundColor = undefined;
   }
   connectionStatusBarItem.show();
@@ -1469,4 +1631,8 @@ async function applyCellUpdateHandler(cellIndex: number, newContent: string) {
 export function deactivate() {
   console.log('Deactivating LOT Notebook extension.');
   connectionStatusBarItem?.dispose();
+  
+  // Dispose telemetry service
+  const telemetryService = TelemetryService.getInstance({} as vscode.ExtensionContext);
+  telemetryService.dispose();
 }

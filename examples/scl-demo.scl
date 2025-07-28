@@ -1,0 +1,285 @@
+(* SCL (Structured Control Language) for PLC Integration *)
+(* This file shows real SCL syntax used in PLCs that can interface with LOT systems *)
+
+// ============================================================================
+// DATA STRUCTURES - Define data types for message handling
+// ============================================================================
+
+TYPE MqttMessage :
+STRUCT
+    topic : STRING[200];
+    payload : STRING[1000];
+    qos : INT;
+    retain : BOOL;
+END_STRUCT
+END_TYPE
+
+TYPE SensorData :
+STRUCT
+    temperature : REAL;
+    humidity : REAL;
+    pressure : REAL;
+    timestamp : DATE_AND_TIME;
+    sensorId : STRING[50];
+    isValid : BOOL;
+END_STRUCT
+END_TYPE
+
+TYPE MachineStatus :
+STRUCT
+    energy : REAL;
+    powerConsumption : REAL;
+    operatingMode : INT; // 0=OFF, 1=STANDBY, 2=RUNNING, 3=ERROR
+    productionCount : DINT;
+    errorCode : WORD;
+    lastMaintenanceDate : DATE;
+END_STRUCT
+END_TYPE
+
+// ============================================================================
+// FUNCTION BLOCKS - Define processing logic
+// ============================================================================
+
+FUNCTION_BLOCK DataProcessor
+VAR_INPUT
+    mqttInput : MqttMessage;
+    processEnable : BOOL;
+    cycleTime : TIME;
+END_VAR
+
+VAR_OUTPUT
+    processedData : SensorData;
+    statusOutput : MachineStatus;
+    errorFlag : BOOL;
+    outputReady : BOOL;
+END_VAR
+
+VAR
+    internalCounter : INT;
+    lastProcessTime : DATE_AND_TIME;
+    tempValue : REAL;
+    i : INT;
+END_VAR
+
+BEGIN
+    // Process only when enabled
+    IF processEnable THEN
+        // Extract temperature from MQTT payload
+        // This would typically use a JSON parsing function
+        tempValue := STRING_TO_REAL(mqttInput.payload);
+        
+        IF tempValue > 0.0 AND tempValue < 100.0 THEN
+            processedData.temperature := tempValue;
+            processedData.isValid := TRUE;
+            processedData.timestamp := NOW();
+            
+            // Update machine status based on temperature
+            IF tempValue > 80.0 THEN
+                statusOutput.operatingMode := 3; // ERROR
+                statusOutput.errorCode := 16#0001; // Overtemperature
+                errorFlag := TRUE;
+            ELSIF tempValue > 60.0 THEN
+                statusOutput.operatingMode := 2; // RUNNING
+                statusOutput.errorCode := 16#0000;
+                errorFlag := FALSE;
+            ELSE
+                statusOutput.operatingMode := 1; // STANDBY
+                statusOutput.errorCode := 16#0000;
+                errorFlag := FALSE;
+            END_IF;
+            
+            outputReady := TRUE;
+        ELSE
+            processedData.isValid := FALSE;
+            errorFlag := TRUE;
+            outputReady := FALSE;
+        END_IF;
+        
+        internalCounter := internalCounter + 1;
+        lastProcessTime := NOW();
+    ELSE
+        outputReady := FALSE;
+    END_IF;
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK ComponentProcessor
+VAR_INPUT
+    componentData : ARRAY[1..10] OF SensorData;
+    processCommand : BOOL;
+    systemId : STRING[20];
+END_VAR
+
+VAR_OUTPUT
+    aggregatedData : SensorData;
+    processComplete : BOOL;
+    validComponents : INT;
+END_VAR
+
+VAR
+    i : INT;
+    tempSum : REAL;
+    humiditySum : REAL;
+    validCount : INT;
+END_VAR
+
+BEGIN
+    IF processCommand THEN
+        tempSum := 0.0;
+        humiditySum := 0.0;
+        validCount := 0;
+        
+        // Process all components
+        FOR i := 1 TO 10 DO
+            IF componentData[i].isValid THEN
+                tempSum := tempSum + componentData[i].temperature;
+                humiditySum := humiditySum + componentData[i].humidity;
+                validCount := validCount + 1;
+            END_IF;
+        END_FOR;
+        
+        // Calculate averages if we have valid data
+        IF validCount > 0 THEN
+            aggregatedData.temperature := tempSum / INT_TO_REAL(validCount);
+            aggregatedData.humidity := humiditySum / INT_TO_REAL(validCount);
+            aggregatedData.isValid := TRUE;
+            aggregatedData.timestamp := NOW();
+            processComplete := TRUE;
+            validComponents := validCount;
+        ELSE
+            aggregatedData.isValid := FALSE;
+            processComplete := FALSE;
+            validComponents := 0;
+        END_IF;
+    ELSE
+        processComplete := FALSE;
+    END_IF;
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK MqttPublisher
+VAR_INPUT
+    dataToPublish : SensorData;
+    topicPrefix : STRING[100];
+    publishEnable : BOOL;
+END_VAR
+
+VAR_OUTPUT
+    publishSuccess : BOOL;
+    lastPublishTime : DATE_AND_TIME;
+END_VAR
+
+VAR
+    mqttMsg : MqttMessage;
+    payloadString : STRING[500];
+END_VAR
+
+BEGIN
+    IF publishEnable AND dataToPublish.isValid THEN
+        // Build MQTT topic
+        mqttMsg.topic := CONCAT(topicPrefix, dataToPublish.sensorId);
+        
+        // Create JSON payload (simplified representation)
+        payloadString := CONCAT('{"temperature":', REAL_TO_STRING(dataToPublish.temperature));
+        payloadString := CONCAT(payloadString, ',"humidity":');
+        payloadString := CONCAT(payloadString, REAL_TO_STRING(dataToPublish.humidity));
+        payloadString := CONCAT(payloadString, ',"pressure":');
+        payloadString := CONCAT(payloadString, REAL_TO_STRING(dataToPublish.pressure));
+        payloadString := CONCAT(payloadString, '}');
+        
+        mqttMsg.payload := payloadString;
+        mqttMsg.qos := 1;
+        mqttMsg.retain := FALSE;
+        
+        // Here you would call your MQTT publish function
+        // PublishMqtt(mqttMsg);
+        
+        publishSuccess := TRUE;
+        lastPublishTime := NOW();
+    ELSE
+        publishSuccess := FALSE;
+    END_IF;
+END_FUNCTION_BLOCK
+
+// ============================================================================
+// CONTROL FUNCTIONS
+// ============================================================================
+
+FUNCTION CalculateEnergyConsumption : REAL
+VAR_INPUT
+    voltage : REAL;
+    current : REAL;
+    powerFactor : REAL;
+    operatingTime : TIME;
+END_VAR
+
+VAR
+    power : REAL;
+    energyKwh : REAL;
+    timeHours : REAL;
+END_VAR
+
+BEGIN
+    // Calculate power in watts
+    power := voltage * current * powerFactor;
+    
+    // Convert time to hours
+    timeHours := TIME_TO_REAL(operatingTime) / 3600000.0; // ms to hours
+    
+    // Calculate energy in kWh
+    energyKwh := (power * timeHours) / 1000.0;
+    
+    CalculateEnergyConsumption := energyKwh;
+END_FUNCTION
+
+FUNCTION ValidateTemperatureRange : BOOL
+VAR_INPUT
+    temperature : REAL;
+    minTemp : REAL;
+    maxTemp : REAL;
+END_VAR
+
+BEGIN
+    ValidateTemperatureRange := (temperature >= minTemp) AND (temperature <= maxTemp);
+END_FUNCTION
+
+// ============================================================================
+// EXAMPLE USAGE IN MAIN PROGRAM
+// ============================================================================
+
+(*
+PROGRAM MainProgram
+VAR
+    processor1 : DataProcessor;
+    componentProc : ComponentProcessor;
+    publisher : MqttPublisher;
+    sensorArray : ARRAY[1..10] OF SensorData;
+    systemRunning : BOOL;
+    cycleCounter : DINT;
+END_VAR
+
+BEGIN
+    // Main control logic
+    systemRunning := TRUE;
+    
+    // Process sensor data
+    processor1(
+        processEnable := systemRunning,
+        cycleTime := T#100ms
+    );
+    
+    // Process component data
+    componentProc(
+        componentData := sensorArray,
+        processCommand := processor1.outputReady,
+        systemId := 'SYS001'
+    );
+    
+    // Publish aggregated data
+    publisher(
+        dataToPublish := componentProc.aggregatedData,
+        topicPrefix := 'factory/sensors/',
+        publishEnable := componentProc.processComplete
+    );
+    
+    cycleCounter := cycleCounter + 1;
+END_PROGRAM
+*)
