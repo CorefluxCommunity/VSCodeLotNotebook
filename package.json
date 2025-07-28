@@ -213,6 +213,11 @@
 				"command": "coreflux.setupGitRepo",
 				"title": "Setup Git Repository",
 				"category": "Coreflux"
+			},
+			{
+				"command": "coreflux.testTelemetry",
+				"title": "Test Telemetry Connection",
+				"category": "Coreflux"
 			}
 		],
 		"viewsWelcome": [
@@ -314,8 +319,8 @@
 			"properties": {
 				"coreflux.telemetryEnabled": {
 					"type": "boolean",
-					"default": false,
-					"markdownDescription": "Enable anonymous telemetry to help improve the extension. [Privacy Policy](https://coreflux.org/privacy)",
+					"default": true,
+					"markdownDescription": "Enable anonymous telemetry to help improve the extension. [Privacy Policy](https://docs.coreflux.org/privacy)",
 					"scope": "application"
 				},
 				"lotNotebook.experimentalFeatures": {

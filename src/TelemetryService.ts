@@ -90,9 +90,12 @@ export class TelemetryService {
 
   private async initializeMqttConnection(): Promise<void> {
     if (!this.isTelemetryEnabled()) {
+      console.log('Telemetry: Disabled by configuration');
       return;
     }
 
+    console.log('Telemetry: Initializing MQTT connection to', this.BROKER_URL);
+    
     try {
       this.mqttClient = mqtt.connect(this.BROKER_URL, {
         clientId: `vscode-lot-extension-${this.guid}`,
@@ -102,7 +105,7 @@ export class TelemetryService {
       });
 
       this.mqttClient.on('connect', () => {
-        console.log('Telemetry: Connected to MQTT broker');
+        console.log('Telemetry: Connected to MQTT broker at', this.BROKER_URL);
         this.isConnected = true;
         this.retryAttempt = 0;
         this.processQueuedEvents();
@@ -150,9 +153,12 @@ export class TelemetryService {
 
   private async publishEvent(topic: string, payload: TelemetryEvent): Promise<void> {
     if (!this.isTelemetryEnabled()) {
+      console.log('Telemetry: Event not published - telemetry disabled');
       return;
     }
 
+    console.log('Telemetry: Queuing event for topic', topic);
+    
     // Add to queue first
     this.eventQueue.push({ topic, payload });
 
@@ -168,14 +174,17 @@ export class TelemetryService {
 
   private async processQueuedEvents(): Promise<void> {
     if (!this.isConnected || !this.mqttClient || this.eventQueue.length === 0) {
+      console.log('Telemetry: Cannot process events - connected:', this.isConnected, 'client:', !!this.mqttClient, 'queue length:', this.eventQueue.length);
       return;
     }
 
+    console.log('Telemetry: Processing', this.eventQueue.length, 'queued events');
     const eventsToProcess = [...this.eventQueue];
     this.eventQueue = [];
 
     for (const event of eventsToProcess) {
       try {
+        console.log('Telemetry: Publishing event to topic', event.topic);
         await new Promise<void>((resolve, reject) => {
           this.mqttClient!.publish(
             event.topic,
@@ -183,8 +192,10 @@ export class TelemetryService {
             { qos: 1, retain: false },
             (error) => {
               if (error) {
+                console.error('Telemetry: Publish error for topic', event.topic, ':', error);
                 reject(error);
               } else {
+                console.log('Telemetry: Successfully published event to topic', event.topic);
                 resolve();
               }
             }
