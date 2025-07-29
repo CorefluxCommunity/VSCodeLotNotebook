@@ -175,10 +175,9 @@ export class CorefluxEntitiesProvider extends EventEmitter implements vscode.Tre
           const notebookCode = location.cellContent; // Get stored cell content
           const mqttCode = data.code;
 
-          // Normalize code for comparison (e.g., trim whitespace, line endings?)
-          // Simple trim for now, might need more robust normalization
-          const normalizedNotebookCode = notebookCode?.trim();
-          const normalizedMqttCode = mqttCode?.trim();
+          // Normalize code for comparison by removing comments and trimming whitespace
+          const normalizedNotebookCode = this.removeCommentsFromLOTCode(notebookCode?.trim() || '');
+          const normalizedMqttCode = this.removeCommentsFromLOTCode(mqttCode?.trim() || '');
 
           if (normalizedNotebookCode === normalizedMqttCode) {
             status = 'synced';
@@ -499,6 +498,32 @@ export class CorefluxEntitiesProvider extends EventEmitter implements vscode.Tre
     }
     // Not found in any parsed notebook
     return undefined;
+  }
+
+  /**
+   * Removes comments from LOT code for comparison purposes.
+   * Handles both single-line (//) and block comments (/ * * /).
+   */
+  private removeCommentsFromLOTCode(code: string): string {
+    if (!code) return '';
+
+    let result = code;
+    
+    // Remove block comments /* ... */
+    result = result.replace(/\/\*[\s\S]*?\*\//g, '');
+    
+    // Remove single-line comments //
+    result = result.replace(/\/\/.*$/gm, '');
+    
+    // Remove empty lines and normalize whitespace
+    result = result
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .join('\n')
+      .trim();
+    
+    return result;
   }
 
 } 
