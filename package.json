@@ -64,6 +64,11 @@
 					"command": "lot-notebook.explainCell",
 					"group": "navigation",
 					"when": "notebookType == lot-notebook && notebookCellType == code && config.lotNotebook.experimentalFeatures.anselmoChatbot"
+				},
+				{
+					"command": "lot-notebook.detectAndSwitchLanguage",
+					"group": "navigation",
+					"when": "notebookCellType == code"
 				}
 			]
 		},
@@ -81,6 +86,11 @@
 			{
 				"command": "lot-notebook.create",
 				"title": "New LOT Notebook",
+				"category": "LOT Notebook"
+			},
+			{
+				"command": "lot-notebook.detectAndSwitchLanguage",
+				"title": "Detect and Switch to LOT Language",
 				"category": "LOT Notebook"
 			},
 			{
@@ -213,6 +223,16 @@
 				"command": "coreflux.setupGitRepo",
 				"title": "Setup Git Repository",
 				"category": "Coreflux"
+			},
+			{
+				"command": "coreflux.createPythonScripts",
+				"title": "Create Python Scripts",
+				"category": "Coreflux"
+			},
+			{
+				"command": "coreflux.testTelemetry",
+				"title": "Test Telemetry Connection",
+				"category": "Coreflux"
 			}
 		],
 		"viewsWelcome": [
@@ -269,7 +289,43 @@
 					".lot",
 					".cf"
 				],
-				"configuration": "./language-configuration.json"
+				"configuration": "./language-configuration.json",
+				"languageDetection": {
+					"patterns": [
+						{
+							"pattern": "\\b(DEFINE|MODEL|RULE|ROUTE|ACTION|PUBLISH|KEEP|GET|ON|EVERY|DO|IF|THEN|ELSE|SET|FILTER|REGEX|ADD|TOPIC|COLLAPSED)\\b",
+							"weight": 1.0
+						},
+						{
+							"pattern": "\\bDEFINE\\s+(MODEL|ACTION|RULE|ROUTE)\\b",
+							"weight": 2.0
+						},
+						{
+							"pattern": "\\bON\\s+EVERY\\b",
+							"weight": 1.5
+						},
+						{
+							"pattern": "\\bPUBLISH\\s+TOPIC\\b",
+							"weight": 1.5
+						},
+						{
+							"pattern": "\\bKEEP\\s+TOPIC\\b",
+							"weight": 1.5
+						},
+						{
+							"pattern": "\\bGET\\s+TOPIC\\b",
+							"weight": 1.5
+						},
+						{
+							"pattern": "\\bIF\\s*\\(.*\\)\\s*THEN\\b",
+							"weight": 1.3
+						},
+						{
+							"pattern": "\\bDO\\s*\\{",
+							"weight": 1.2
+						}
+					]
+				}
 			},
 			{
 				"id": "shellscript",
@@ -314,8 +370,8 @@
 			"properties": {
 				"coreflux.telemetryEnabled": {
 					"type": "boolean",
-					"default": false,
-					"markdownDescription": "Enable anonymous telemetry to help improve the extension. [Privacy Policy](https://coreflux.org/privacy)",
+					"default": true,
+					"markdownDescription": "Enable anonymous telemetry to help improve the extension. [Privacy Policy](https://docs.coreflux.org/privacy)",
 					"scope": "application"
 				},
 				"lotNotebook.experimentalFeatures": {
@@ -352,11 +408,11 @@
 					},
 					{
 						"id": "create-markdown-file",
-						"title": "Create your first Markdown file",
-						"description": "Document your LOT project with Markdown for clear explanations.\n\n[Create Markdown File](command:coreflux.createMarkdownFile)",
+						"title": "Add walkthrough explanation",
+						"description": "Add a markdown cell with detailed explanation of the walkthrough and what you'll build.\n\n[Add Walkthrough Guide](command:coreflux.createMarkdownFile)",
 						"media": {
 							"image": "media/walkthrough/create-markdown.png",
-							"altText": "Creating a Markdown documentation file"
+							"altText": "Adding walkthrough explanation to notebook"
 						},
 						"completionEvents": [
 							"onCommand:coreflux.createMarkdownFile"
@@ -423,6 +479,18 @@
 						]
 					},
 					{
+						"id": "create-python-scripts",
+						"title": "Add basic Python scripts",
+						"description": "Create reusable Python functions that can be called from your LOT actions.\n\n[Create Python Scripts](command:coreflux.createPythonScripts)",
+						"media": {
+							"image": "media/walkthrough/python-scripts.png",
+							"altText": "Creating Python scripts"
+						},
+						"completionEvents": [
+							"onCommand:coreflux.createPythonScripts"
+						]
+					},
+					{
 						"id": "create-docker-compose",
 						"title": "Create a shell script with Docker Compose",
 						"description": "Set up a complete local development environment.\n\n[Create Docker Setup](command:coreflux.createDockerSetup)",
@@ -455,7 +523,8 @@
 			"markdown",
 			"bash",
 			"shellscript",
-			"terminal"
+			"terminal",
+			"python"
 		]
 	},
 	"scripts": {

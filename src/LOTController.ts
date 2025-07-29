@@ -15,7 +15,7 @@ type CellStep = 'remove' | 'add' | 'subscribe' | 'live' | 'done' | 'failed';
 interface CellState {
   step: CellStep;
   code: string;
-  type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE' | 'VISU';
+  type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE' | 'VISU' | 'PYTHON';
   name: string;
   execution: vscode.NotebookCellExecution;
   treeState: { [key: string]: boolean }; // Tracks expanded/collapsed state of topics
@@ -25,13 +25,13 @@ interface CellState {
 }
 
 // Type alias for valid entity types
-type EntityTypeString = 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE' | 'VISU';
+type EntityTypeString = 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE' | 'VISU' | 'PYTHON';
 
 export default class LOTController extends EventEmitter { // Extend EventEmitter
   readonly controllerId = 'lot-notebook-controller-id';
   readonly notebookType = 'lot-notebook';
   readonly label = 'LOT Notebook';
-  readonly supportedLanguages = ['lot', 'scl', 'markdown', 'shellscript', 'bash', 'terminal'];
+  readonly supportedLanguages = ['lot', 'scl', 'markdown', 'shellscript', 'bash', 'terminal', 'python'];
 
   private readonly _controller: vscode.NotebookController;
   private _executionOrder = 0;
@@ -366,6 +366,55 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
         execution.end(true, Date.now());
         return;
       }
+      
+      // Handle Python cells
+      if (lang === 'python') {
+        const scriptName = this._extractPythonScriptName(code);
+        const stopRequested = code.toUpperCase().includes('STOP');
+
+        const cellState: CellState = {
+          step: 'remove',
+          code,
+          type: 'PYTHON',
+          name: scriptName,
+          execution,
+          stopRequested,
+          liveTree: {},
+          subscribedTopics: [],
+          treeState: {}
+        };
+
+        this._cellStates.set(cellUri, cellState);
+        execution.replaceOutput([new vscode.NotebookCellOutput([this.createHtmlOutput(`Processing Python script: ${scriptName}...`, false)])]);
+
+        // Subscribe to debug topic for this Python script
+        const debugTopic = `$SYS/Coreflux/Python/${scriptName}/debug`;
+        this._subscribeToTopic(debugTopic);
+        cellState.subscribedTopics.push(debugTopic);
+
+        // Start the execution process for Python cells
+        if (token.isCancellationRequested) { return; }
+
+        if (!this._connected) {
+          const success = await this._connectMqtt();
+          if (!success) {
+            execution.replaceOutput([new vscode.NotebookCellOutput([vscode.NotebookCellOutputItem.stderr('Failed to connect to MQTT broker.')])]);
+            execution.end(false, Date.now());
+            this._cellStates.delete(cellUri);
+            return;
+          }
+          if (token.isCancellationRequested) { return; }
+        }
+
+        if (token.isCancellationRequested) { return; }
+
+        const removeCmd = this._buildRemoveCommand('PYTHON', scriptName);
+        await this._publishCommand(removeCmd, execution, `Removing Python script ${scriptName}...`, token);
+
+        // Note: Further steps happen asynchronously in _handleCommandOutput
+        return;
+      }
+      
       const parsed = this._parseEntityTypeAndName(code);
       if (!parsed) {
         execution.replaceOutput([new vscode.NotebookCellOutput([this.createHtmlOutput('Failed to parse entity type and name from code. Expected "DEFINE MODEL <Name>", "DEFINE ACTION <Name>", or "DEFINE ROUTE <Name>, or "DEFINE RULE <Name>".', true)])]);
@@ -896,6 +945,12 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
       return;
     }
 
+    // Handle Python debug messages
+    if (topic.startsWith('$SYS/Coreflux/Python/') && topic.endsWith('/debug')) {
+      this._handlePythonDebugMessage(topic, payload);
+      return;
+    }
+
     // Handle non-command-output messages (e.g., live data for cells)
     this._payloadMap.set(topic, payload);
     this._topicProvider.addTopic(topic);
@@ -911,12 +966,40 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
   }
 
   /**
+   * Handles Python debug messages from the broker.
+   */
+  private _handlePythonDebugMessage(topic: string, payload: string): void {
+    // Extract script name from topic: $SYS/Coreflux/Python/<scriptName>/debug
+    const parts = topic.split('/');
+    const scriptName = parts[3]; // Index 3 should be the script name
+    
+    console.log(`Received Python debug message for script ${scriptName}: ${payload}`);
+    
+    // Find the cell state for this Python script
+    for (const [uri, cellState] of this._cellStates.entries()) {
+      if (cellState.type === 'PYTHON' && cellState.name === scriptName) {
+        // Update the cell output with the debug message
+        const output = new vscode.NotebookCellOutput([
+          vscode.NotebookCellOutputItem.text(payload, 'text/plain')
+        ]);
+        cellState.execution.replaceOutput([output]);
+        
+        // If the message indicates completion, end the execution
+        if (payload.toLowerCase().includes('completed') || payload.toLowerCase().includes('success')) {
+          cellState.execution.end(true, Date.now());
+        }
+        break;
+      }
+    }
+  }
+
+  /**
    * Handles output from the $SYS/Coreflux/Command/Output topic,
    * specifically looking for successful removeAll command responses.
    */
   private _handleSysCommandOutput(payload: string): void {
     const lowerPayload = payload.toLowerCase();
-    let categoryToClear: 'Models' | 'Actions' | 'Routes' | 'Rules' | null = null;
+    let categoryToClear: 'Models' | 'Actions' | 'Routes' | 'Rules' | 'Python Scripts' | null = null;
 
     // Define patterns for successful removal
     // Adjust these patterns based on the *exact* success messages from the broker
@@ -924,7 +1007,8 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
       Models: /removed all models successfully/i,
       Actions: /removed all actions successfully/i,
       Routes: /removed all routes successfully/i,
-      Rules: /removed all rules successfully/i // Add Rules if applicable
+      Rules: /removed all rules successfully/i,
+      'Python Scripts': /removed all python scripts successfully/i
     };
 
     if (patterns.Models.test(lowerPayload)) {
@@ -935,6 +1019,8 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
       categoryToClear = 'Routes';
     } else if (patterns.Rules.test(lowerPayload)) {
       categoryToClear = 'Rules';
+    } else if (patterns['Python Scripts'].test(lowerPayload)) {
+      categoryToClear = 'Python Scripts';
     }
 
     if (categoryToClear) {
@@ -1007,6 +1093,7 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
     case 'RULE': return `-removeRule ${name}`;
     case 'ROUTE': return `-removeRoute ${name}`;
     case 'VISU': return `-removeVisu ${name}`;
+    case 'PYTHON': return `-removePython ${name}`;
     }
   }
 
@@ -1020,6 +1107,7 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
     case 'RULE': return `-addRule ${code}`;
     case 'ROUTE': return `-addRoute ${code}`;
     case 'VISU': return `-addVisu ${code}`;
+    case 'PYTHON': return `-addPython ${this._extractPythonScriptName(code)} ${code}`;
     }
   }
 
@@ -1028,6 +1116,7 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
    * Returns the specific EntityTypeString union.
    */
   private _parseEntityTypeAndName(code: string): { type: EntityTypeString; name: string } | null {
+    // First, try to match the standard pattern
     const re = /\bDEFINE\s+(MODEL|ACTION|RULE|ROUTE|VISU)\s+"?([A-Za-z0-9_\-\/]+)"?/i;
     const match = code.match(re);
     if (!match) return null;
@@ -1043,7 +1132,27 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
     }
   }
 
-  private _parseInputTopics(type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE' | 'VISU' , code: string): string[] {
+  /**
+   * Extract Python script name from Python code.
+   * Looks for @name comment or uses a default name.
+   */
+  private _extractPythonScriptName(code: string): string {
+    const nameMatch = code.match(/^#\s*@name\s+(\S+)/i);
+    if (nameMatch) {
+      return nameMatch[1];
+    }
+    
+    // Try to extract from function definitions
+    const funcMatch = code.match(/^def\s+(\w+)/m);
+    if (funcMatch) {
+      return funcMatch[1];
+    }
+    
+    // Default name
+    return 'PythonScript';
+  }
+
+  private _parseInputTopics(type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE' | 'VISU' | 'PYTHON', code: string): string[] {
     let topics: string[] = [];
 
     const withTopicRegex = /\bWITH\s+TOPIC\s+"([^"]+)"/gi;
@@ -1068,7 +1177,7 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
     return Array.from(new Set(topics));
   }
 
-  private _parseOutputTopics(type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE' | 'VISU', code: string): string[] {
+  private _parseOutputTopics(type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE' | 'VISU' | 'PYTHON', code: string): string[] {
     let topics: string[] = [];
     const publishRegex = /\bPUBLISH\s+TOPIC\s+"([^"]+)"/gi;
     let match: RegExpExecArray | null;
