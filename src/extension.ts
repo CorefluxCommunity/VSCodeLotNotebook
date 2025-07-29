@@ -1445,6 +1445,53 @@ export async function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  // Command to detect and switch to LOT language
+  context.subscriptions.push(
+    vscode.commands.registerCommand('lot-notebook.detectAndSwitchLanguage', async () => {
+      const activeEditor = vscode.window.activeTextEditor;
+      if (!activeEditor) {
+        vscode.window.showWarningMessage('No active editor found.');
+        return;
+      }
+
+      const document = activeEditor.document;
+      const text = document.getText();
+      
+      // LOT detection patterns
+      const lotPatterns = [
+        /\bDEFINE\s+(MODEL|ACTION|RULE|ROUTE)\b/i,
+        /\bON\s+EVERY\b/i,
+        /\bPUBLISH\s+TOPIC\b/i,
+        /\bKEEP\s+TOPIC\b/i,
+        /\bGET\s+TOPIC\b/i,
+        /\bIF\s*\(.*\)\s*THEN\b/i,
+        /\bDO\s*\{/i
+      ];
+
+      let lotScore = 0;
+      for (const pattern of lotPatterns) {
+        const matches = text.match(pattern);
+        if (matches) {
+          lotScore += matches.length;
+        }
+      }
+
+      if (lotScore > 0) {
+        const result = await vscode.window.showInformationMessage(
+          `Detected LOT code (score: ${lotScore}). Switch to LOT language?`,
+          'Yes', 'No'
+        );
+        
+        if (result === 'Yes') {
+          await vscode.languages.setTextDocumentLanguage(document, 'lot');
+          vscode.window.showInformationMessage('Switched to LOT language mode.');
+        }
+      } else {
+        vscode.window.showInformationMessage('No LOT code detected in the current document.');
+      }
+    })
+  );
+
   // --- Onboarding Commands ---
   context.subscriptions.push(
     vscode.commands.registerCommand('coreflux.openWalkthrough', () => onboardingCommands.openWalkthrough())

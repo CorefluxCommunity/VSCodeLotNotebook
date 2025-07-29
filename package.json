@@ -64,6 +64,11 @@
 					"command": "lot-notebook.explainCell",
 					"group": "navigation",
 					"when": "notebookType == lot-notebook && notebookCellType == code && config.lotNotebook.experimentalFeatures.anselmoChatbot"
+				},
+				{
+					"command": "lot-notebook.detectAndSwitchLanguage",
+					"group": "navigation",
+					"when": "notebookCellType == code"
 				}
 			]
 		},
@@ -81,6 +86,11 @@
 			{
 				"command": "lot-notebook.create",
 				"title": "New LOT Notebook",
+				"category": "LOT Notebook"
+			},
+			{
+				"command": "lot-notebook.detectAndSwitchLanguage",
+				"title": "Detect and Switch to LOT Language",
 				"category": "LOT Notebook"
 			},
 			{
