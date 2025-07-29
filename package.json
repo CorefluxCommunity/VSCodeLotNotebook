@@ -279,7 +279,43 @@
 					".lot",
 					".cf"
 				],
-				"configuration": "./language-configuration.json"
+				"configuration": "./language-configuration.json",
+				"languageDetection": {
+					"patterns": [
+						{
+							"pattern": "\\b(DEFINE|MODEL|RULE|ROUTE|ACTION|PUBLISH|KEEP|GET|ON|EVERY|DO|IF|THEN|ELSE|SET|FILTER|REGEX|ADD|TOPIC|COLLAPSED)\\b",
+							"weight": 1.0
+						},
+						{
+							"pattern": "\\bDEFINE\\s+(MODEL|ACTION|RULE|ROUTE)\\b",
+							"weight": 2.0
+						},
+						{
+							"pattern": "\\bON\\s+EVERY\\b",
+							"weight": 1.5
+						},
+						{
+							"pattern": "\\bPUBLISH\\s+TOPIC\\b",
+							"weight": 1.5
+						},
+						{
+							"pattern": "\\bKEEP\\s+TOPIC\\b",
+							"weight": 1.5
+						},
+						{
+							"pattern": "\\bGET\\s+TOPIC\\b",
+							"weight": 1.5
+						},
+						{
+							"pattern": "\\bIF\\s*\\(.*\\)\\s*THEN\\b",
+							"weight": 1.3
+						},
+						{
+							"pattern": "\\bDO\\s*\\{",
+							"weight": 1.2
+						}
+					]
+				}
 			},
 			{
 				"id": "shellscript",
