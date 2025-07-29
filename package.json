@@ -477,7 +477,8 @@
 			"markdown",
 			"bash",
 			"shellscript",
-			"terminal"
+			"terminal",
+			"python"
 		]
 	},
 	"scripts": {

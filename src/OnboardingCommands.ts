@@ -335,7 +335,7 @@ export class OnboardingCommands {
       }
 
       // Add cell to existing notebook
-      const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, pythonContent, 'lot');
+      const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, pythonContent, 'python');
       const edit = new vscode.WorkspaceEdit();
       const notebookEdit = new vscode.NotebookEdit(
         new vscode.NotebookRange(notebookDoc.cellCount, notebookDoc.cellCount),
@@ -649,9 +649,13 @@ After completing this walkthrough, you'll be ready to:
   }
 
   private getPythonScriptsTemplate(): string {
-    return `ADD PYTHON CODE Greeter "def say_hello(name='World'): return f'Hello, {name}!'"
-ADD PYTHON CODE Calculator "def add(a, b): return a + b"
-ADD PYTHON CODE TextProcessor "def reverse_text(text): return text[::-1]"`;
+    return `# @name Greeter
+def say_hello(name='World'):
+    return f'Hello, {name}!'
+
+# Example usage:
+# result = say_hello('Alice')
+# print(result)`;
   }
 
   private getGitignoreTemplate(): string {

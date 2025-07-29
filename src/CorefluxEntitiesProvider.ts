@@ -369,7 +369,7 @@ export class CorefluxEntitiesProvider extends EventEmitter implements vscode.Tre
 
   // --- Methods related to notebook parsing ---
 
-  /**
+    /**
    * Parses a notebook document to find entity definitions within its cells.
    * @param notebookDoc The VS Code notebook document to parse.
    */
@@ -387,59 +387,51 @@ export class CorefluxEntitiesProvider extends EventEmitter implements vscode.Tre
     this.entityLocations.set(notebookUriString, locationsInNotebook);
     let definitionsFoundCount = 0;
 
-    const defineRegex = /^\s*DEFINE\s+(MODEL|ACTION|RULE|ROUTE)\s+(\S+)/i;
-    const pythonScriptRegex = /^\s*ADD\s+PYTHON\s+CODE\s+(\S+)\s+"([^"]+)"/i;
-
     // Iterate through cells in the notebook
     for (let cellIndex = 0; cellIndex < notebookDoc.cellCount; cellIndex++) {
       const cell = notebookDoc.cellAt(cellIndex);
-      // Only parse code cells with the 'lot' language
-      if (cell.kind !== vscode.NotebookCellKind.Code || cell.document.languageId !== 'lot') {
-        continue;
+      
+      // Parse LOT code cells for entity definitions
+      if (cell.kind === vscode.NotebookCellKind.Code && cell.document.languageId === 'lot') {
+        definitionsFoundCount += this.parseLOTCell(cell, cellIndex, notebookDoc, locationsInNotebook);
       }
+      // Parse Python cells for Python scripts
+      else if (cell.kind === vscode.NotebookCellKind.Code && cell.document.languageId === 'python') {
+        definitionsFoundCount += this.parsePythonCell(cell, cellIndex, notebookDoc, locationsInNotebook);
+      }
+    }
 
-      const cellDocument = cell.document;
-      const cellFullContent = cellDocument.getText(); // Get cell content once
-      let definitionFoundInCell = false; // Flag to avoid multiple stores per cell if DEFINE appears twice
+    console.log(`Finished parsing ${notebookDoc.uri.fsPath}. Found ${definitionsFoundCount} entity definitions in this notebook.`);
+    this.entityLocations.set(notebookUriString, locationsInNotebook); // Update the map for this notebook URI
+    this.emit('notebookParsed');
+  }
 
-      // Iterate through lines within the cell
-      for (let lineIndex = 0; lineIndex < cellDocument.lineCount; lineIndex++) {
-        if (definitionFoundInCell) break; // Only find the first DEFINE in a cell
+  /**
+   * Parses a LOT cell to find entity definitions.
+   */
+  private parseLOTCell(cell: vscode.NotebookCell, cellIndex: number, notebookDoc: vscode.NotebookDocument, locationsInNotebook: Map<string, EntityNotebookLocation>): number {
+    const defineRegex = /^\s*DEFINE\s+(MODEL|ACTION|RULE|ROUTE)\s+(\S+)/i;
+    const cellDocument = cell.document;
+    const cellFullContent = cellDocument.getText();
+    let definitionsFoundCount = 0;
 
-        const line = cellDocument.lineAt(lineIndex);
-        
-        // Check for DEFINE statements
-        const match = line.text.match(defineRegex);
-        if (match) {
-          const typeUpper = match[1].toUpperCase();
-          let type: 'Model' | 'Action' | 'Rule' | 'Route' | null = null;
-          if (typeUpper === 'MODEL') type = 'Model';
-          else if (typeUpper === 'ACTION') type = 'Action';
-          else if (typeUpper === 'RULE') type = 'Rule';
-          else if (typeUpper === 'ROUTE') type = 'Route';
+    // Iterate through lines within the cell
+    for (let lineIndex = 0; lineIndex < cellDocument.lineCount; lineIndex++) {
+      const line = cellDocument.lineAt(lineIndex);
+      
+      // Check for DEFINE statements
+      const match = line.text.match(defineRegex);
+      if (match) {
+        const typeUpper = match[1].toUpperCase();
+        let type: 'Model' | 'Action' | 'Rule' | 'Route' | null = null;
+        if (typeUpper === 'MODEL') type = 'Model';
+        else if (typeUpper === 'ACTION') type = 'Action';
+        else if (typeUpper === 'RULE') type = 'Rule';
+        else if (typeUpper === 'ROUTE') type = 'Route';
 
-          if (type) {
-            const name = match[2];
-            const key = `${type}/${name}`;
-            const location: EntityNotebookLocation = {
-              notebookUri: notebookDoc.uri,
-              cellIndex: cellIndex,
-              rangeInCell: line.range, // Range relative to the start of the cell
-              cellContent: cellFullContent // Store the whole cell's content
-            };
-            locationsInNotebook.set(key, location);
-            definitionsFoundCount++;
-            definitionFoundInCell = true; // Mark as found for this cell
-            console.log(`Found entity definition in notebook ${notebookDoc.uri.fsPath}, cell ${cellIndex}: ${key} at line ${lineIndex + 1}`);
-          }
-        }
-        
-        // Check for Python script definitions
-        const pythonMatch = line.text.match(pythonScriptRegex);
-        if (pythonMatch) {
-          const name = pythonMatch[1];
-          const code = pythonMatch[2];
-          const key = `PythonScript/${name}`;
+        if (type) {
+          const name = match[2];
+          const key = `${type}/${name}`;
           const location: EntityNotebookLocation = {
             notebookUri: notebookDoc.uri,
             cellIndex: cellIndex,
@@ -448,15 +440,38 @@ export class CorefluxEntitiesProvider extends EventEmitter implements vscode.Tre
           };
           locationsInNotebook.set(key, location);
           definitionsFoundCount++;
-          definitionFoundInCell = true;
-          console.log(`Found Python script definition in notebook ${notebookDoc.uri.fsPath}, cell ${cellIndex}: ${key} at line ${lineIndex + 1}`);
+          console.log(`Found LOT entity definition in notebook ${notebookDoc.uri.fsPath}, cell ${cellIndex}: ${key} at line ${lineIndex + 1}`);
         }
       }
     }
 
-    console.log(`Finished parsing ${notebookDoc.uri.fsPath}. Found ${definitionsFoundCount} entity definitions in this notebook.`);
-    this.entityLocations.set(notebookUriString, locationsInNotebook); // Update the map for this notebook URI
-    this.emit('notebookParsed');
+    return definitionsFoundCount;
+  }
+
+  /**
+   * Parses a Python cell to find Python script definitions.
+   * Python cells are treated as Python scripts that can be executed.
+   */
+  private parsePythonCell(cell: vscode.NotebookCell, cellIndex: number, notebookDoc: vscode.NotebookDocument, locationsInNotebook: Map<string, EntityNotebookLocation>): number {
+    const cellDocument = cell.document;
+    const cellFullContent = cellDocument.getText();
+    
+    // For Python cells, we use the cell index as the script name if no explicit name is found
+    // You can also extract a name from a comment at the top of the cell
+    const nameMatch = cellFullContent.match(/^#\s*@name\s+(\S+)/i);
+    const scriptName = nameMatch ? nameMatch[1] : `PythonScript_${cellIndex + 1}`;
+    
+    const key = `PythonScript/${scriptName}`;
+    const location: EntityNotebookLocation = {
+      notebookUri: notebookDoc.uri,
+      cellIndex: cellIndex,
+      rangeInCell: new vscode.Range(0, 0, cellDocument.lineCount, 0),
+      cellContent: cellFullContent
+    };
+    locationsInNotebook.set(key, location);
+    console.log(`Found Python script in notebook ${notebookDoc.uri.fsPath}, cell ${cellIndex}: ${key}`);
+    
+    return 1; // Each Python cell counts as one script
   }
 
   /**
