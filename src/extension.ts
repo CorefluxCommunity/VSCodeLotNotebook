@@ -319,6 +319,11 @@ export async function activate(context: vscode.ExtensionContext) {
       handleRemoveAllCommand('Routes', '-removeAllRoutes');
     })
   );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('coreflux.removeAllPythonScripts', async () => {
+      handleRemoveAllCommand('Python Scripts', '-removeAllPythonScripts');
+    })
+  );
 
   // --- Other Commands ---
   const openPayloadCommand = vscode.commands.registerCommand('lot.openTopicPayload', async (topicName: string) => {
@@ -1475,6 +1480,10 @@ export async function activate(context: vscode.ExtensionContext) {
   
   context.subscriptions.push(
     vscode.commands.registerCommand('coreflux.setupGitRepo', () => onboardingCommands.setupGitRepo())
+  );
+  
+  context.subscriptions.push(
+    vscode.commands.registerCommand('coreflux.createPythonScripts', () => onboardingCommands.createPythonScripts())
   );
 
   // Debug command to test telemetry

@@ -310,6 +310,50 @@ export class OnboardingCommands {
     }
   }
 
+  public async createPythonScripts(): Promise<void> {
+    try {
+      const pythonContent = this.getPythonScriptsTemplate();
+      
+      // Use walkthrough.lotnb file consistently
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      let notebookUri: vscode.Uri;
+      
+      if (workspaceFolder) {
+        notebookUri = vscode.Uri.joinPath(workspaceFolder.uri, 'walkthrough.lotnb');
+      } else {
+        vscode.window.showWarningMessage('Please open a workspace folder first to use the walkthrough.');
+        return;
+      }
+
+      // Check if walkthrough.lotnb already exists
+      let notebookDoc: vscode.NotebookDocument;
+      try {
+        notebookDoc = await vscode.workspace.openNotebookDocument(notebookUri);
+      } catch {
+        vscode.window.showWarningMessage('Please create a LOT notebook first using the walkthrough.');
+        return;
+      }
+
+      // Add cell to existing notebook
+      const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, pythonContent, 'lot');
+      const edit = new vscode.WorkspaceEdit();
+      const notebookEdit = new vscode.NotebookEdit(
+        new vscode.NotebookRange(notebookDoc.cellCount, notebookDoc.cellCount),
+        [cellData]
+      );
+      edit.set(notebookDoc.uri, [notebookEdit]);
+      await vscode.workspace.applyEdit(edit);
+      
+      // Show the notebook
+      await vscode.window.showNotebookDocument(notebookDoc);
+
+      await this.onboardingService.completeStep('create-python-scripts');
+      vscode.window.showInformationMessage('✅ Created Python scripts! These can be used in your LOT actions.');
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to create Python scripts: ${error}`);
+    }
+  }
+
   public async setupGitRepo(): Promise<void> {
     try {
       const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -602,6 +646,12 @@ After completing this walkthrough, you'll be ready to:
 
 *Ready to start? Let's build something amazing! 🎉*
 `;
+  }
+
+  private getPythonScriptsTemplate(): string {
+    return `ADD PYTHON CODE Greeter "def say_hello(name='World'): return f'Hello, {name}!'"
+ADD PYTHON CODE Calculator "def add(a, b): return a + b"
+ADD PYTHON CODE TextProcessor "def reverse_text(text): return text[::-1]"`;
   }
 
   private getGitignoreTemplate(): string {

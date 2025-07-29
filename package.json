@@ -215,6 +215,11 @@
 				"category": "Coreflux"
 			},
 			{
+				"command": "coreflux.createPythonScripts",
+				"title": "Create Python Scripts",
+				"category": "Coreflux"
+			},
+			{
 				"command": "coreflux.testTelemetry",
 				"title": "Test Telemetry Connection",
 				"category": "Coreflux"
@@ -425,6 +430,18 @@
 						},
 						"completionEvents": [
 							"onCommand:coreflux.createModelAction"
+						]
+					},
+					{
+						"id": "create-python-scripts",
+						"title": "Add basic Python scripts",
+						"description": "Create reusable Python functions that can be called from your LOT actions.\n\n[Create Python Scripts](command:coreflux.createPythonScripts)",
+						"media": {
+							"image": "media/walkthrough/python-scripts.png",
+							"altText": "Creating Python scripts"
+						},
+						"completionEvents": [
+							"onCommand:coreflux.createPythonScripts"
 						]
 					},
 					{

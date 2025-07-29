@@ -8,7 +8,7 @@ import { EventEmitter } from 'events'; // Import EventEmitter
 export class EntityItem extends vscode.TreeItem {
   constructor(
     public readonly label: string,
-    public readonly entityType: 'Model' | 'Action' | 'Rule' | 'Route' | 'Description' | 'Category',
+    public readonly entityType: 'Model' | 'Action' | 'Rule' | 'Route' | 'PythonScript' | 'Description' | 'Category',
     public readonly entityName: string, // e.g., MyModel, MyAction
     public readonly topic: string | null, // Full topic for this item, null for categories
     public readonly payload: string | null, // Code or description payload, null for categories
@@ -61,11 +61,13 @@ export class CorefluxEntitiesProvider extends EventEmitter implements vscode.Tre
     Actions: Map<string, { code?: string; description?: string }>;
     Rules: Map<string, { code?: string; description?: string }>;
     Routes: Map<string, { code?: string; description?: string }>;
+    PythonScripts: Map<string, { code?: string; description?: string }>;
   } = {
       Models: new Map(),
       Actions: new Map(),
       Rules: new Map(),
       Routes: new Map(),
+      PythonScripts: new Map(),
     };
 
   // Structure to hold entity locations parsed from notebook files
@@ -90,7 +92,7 @@ export class CorefluxEntitiesProvider extends EventEmitter implements vscode.Tre
   getChildren(element?: EntityItem): Thenable<EntityItem[]> {
     if (!element) {
       // Root level: Show categories with inline command icon
-      const categories = ['Models', 'Actions', 'Rules', 'Routes'];
+      const categories = ['Models', 'Actions', 'Rules', 'Routes', 'Python Scripts'];
       const items: EntityItem[] = categories.map(catLabel => {
         let commandId: string | undefined;
         let tooltipSuffix = '';
@@ -107,7 +109,14 @@ export class CorefluxEntitiesProvider extends EventEmitter implements vscode.Tre
           commandId = 'coreflux.removeAllRoutes';
           tooltipSuffix = 'Click 🗑️ to remove all routes';
           break;
-          // Add case for 'Rules' if needed
+        case 'Python Scripts':
+          commandId = 'coreflux.removeAllPythonScripts';
+          tooltipSuffix = 'Click 🗑️ to remove all Python scripts';
+          break;
+        case 'Rules':
+          commandId = 'coreflux.removeAllRules';
+          tooltipSuffix = 'Click 🗑️ to remove all rules';
+          break;
         }
 
         const itemCommand: vscode.Command | undefined = commandId ? {
@@ -141,7 +150,7 @@ export class CorefluxEntitiesProvider extends EventEmitter implements vscode.Tre
       const items = Array.from(entityMap.entries()).map(([name, data]) => {
         const topic = `$SYS/Coreflux/${element.entityName}/${name}`;
         const collapsible = data.description ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None;
-        const singleEntityType = element.entityName.slice(0, -1) as 'Model' | 'Action' | 'Rule' | 'Route';
+        const singleEntityType = element.entityName === 'Python Scripts' ? 'PythonScript' : element.entityName.slice(0, -1) as 'Model' | 'Action' | 'Rule' | 'Route';
 
         // --- Determine Status (Missing, Synced, Unsynced) ---
         const location = this.getEntityLocation(singleEntityType, name);
@@ -305,6 +314,7 @@ export class CorefluxEntitiesProvider extends EventEmitter implements vscode.Tre
     this.entities.Actions.clear();
     this.entities.Rules.clear();
     this.entities.Routes.clear();
+    this.entities.PythonScripts.clear();
     this.refresh();
     console.log('Cleared all Coreflux entities from the tree.');
   }
@@ -313,10 +323,11 @@ export class CorefluxEntitiesProvider extends EventEmitter implements vscode.Tre
    * Clears entities for a specific category.
    * @param category The category name (e.g., 'Models', 'Actions')
    */
-  public clearCategory(category: 'Models' | 'Actions' | 'Rules' | 'Routes'): void {
-    if (category in this.entities) {
+  public clearCategory(category: 'Models' | 'Actions' | 'Rules' | 'Routes' | 'Python Scripts'): void {
+    const categoryKey = category === 'Python Scripts' ? 'PythonScripts' : category as keyof typeof this.entities;
+    if (categoryKey in this.entities) {
       console.log(`Clearing entities for category: ${category}`);
-      this.entities[category].clear();
+      this.entities[categoryKey].clear();
       this.refresh(); // Trigger tree update
     } else {
       console.warn(`Attempted to clear unknown category: ${category}`);
@@ -326,13 +337,13 @@ export class CorefluxEntitiesProvider extends EventEmitter implements vscode.Tre
   /**
    * Checks if a specific entity exists based on the MQTT data.
    */
-  public hasEntity(entityType: 'Model' | 'Action' | 'Rule' | 'Route', entityName: string): boolean {
-    const category = (entityType + 's') as keyof typeof this.entities;
+  public hasEntity(entityType: 'Model' | 'Action' | 'Rule' | 'Route' | 'PythonScript', entityName: string): boolean {
+    const category = entityType === 'PythonScript' ? 'PythonScripts' : (entityType + 's') as keyof typeof this.entities;
     return this.entities[category]?.has(entityName) ?? false;
   }
 
-  public getEntityCode(entityType: 'Model' | 'Action' | 'Rule' | 'Route', entityName: string): string | undefined {
-    const category = (entityType + 's') as keyof typeof this.entities;
+  public getEntityCode(entityType: 'Model' | 'Action' | 'Rule' | 'Route' | 'PythonScript', entityName: string): string | undefined {
+    const category = entityType === 'PythonScript' ? 'PythonScripts' : (entityType + 's') as keyof typeof this.entities;
     return this.entities[category]?.get(entityName)?.code;
   }
 
@@ -343,8 +354,8 @@ export class CorefluxEntitiesProvider extends EventEmitter implements vscode.Tre
    * @param entityName Name of the entity.
    * @returns True if an entity was removed, false otherwise.
    */
-  public removeEntityData(entityType: 'Model' | 'Action' | 'Rule' | 'Route', entityName: string): boolean {
-    const category = (entityType + 's') as keyof typeof this.entities;
+  public removeEntityData(entityType: 'Model' | 'Action' | 'Rule' | 'Route' | 'PythonScript', entityName: string): boolean {
+    const category = entityType === 'PythonScript' ? 'PythonScripts' : (entityType + 's') as keyof typeof this.entities;
     if (this.entities[category]?.has(entityName)) {
       const deleted = this.entities[category].delete(entityName);
       if (deleted) {
@@ -377,6 +388,7 @@ export class CorefluxEntitiesProvider extends EventEmitter implements vscode.Tre
     let definitionsFoundCount = 0;
 
     const defineRegex = /^\s*DEFINE\s+(MODEL|ACTION|RULE|ROUTE)\s+(\S+)/i;
+    const pythonScriptRegex = /^\s*ADD\s+PYTHON\s+CODE\s+(\S+)\s+"([^"]+)"/i;
 
     // Iterate through cells in the notebook
     for (let cellIndex = 0; cellIndex < notebookDoc.cellCount; cellIndex++) {
@@ -395,6 +407,8 @@ export class CorefluxEntitiesProvider extends EventEmitter implements vscode.Tre
         if (definitionFoundInCell) break; // Only find the first DEFINE in a cell
 
         const line = cellDocument.lineAt(lineIndex);
+        
+        // Check for DEFINE statements
         const match = line.text.match(defineRegex);
         if (match) {
           const typeUpper = match[1].toUpperCase();
@@ -419,6 +433,24 @@ export class CorefluxEntitiesProvider extends EventEmitter implements vscode.Tre
             console.log(`Found entity definition in notebook ${notebookDoc.uri.fsPath}, cell ${cellIndex}: ${key} at line ${lineIndex + 1}`);
           }
         }
+        
+        // Check for Python script definitions
+        const pythonMatch = line.text.match(pythonScriptRegex);
+        if (pythonMatch) {
+          const name = pythonMatch[1];
+          const code = pythonMatch[2];
+          const key = `PythonScript/${name}`;
+          const location: EntityNotebookLocation = {
+            notebookUri: notebookDoc.uri,
+            cellIndex: cellIndex,
+            rangeInCell: line.range,
+            cellContent: cellFullContent
+          };
+          locationsInNotebook.set(key, location);
+          definitionsFoundCount++;
+          definitionFoundInCell = true;
+          console.log(`Found Python script definition in notebook ${notebookDoc.uri.fsPath}, cell ${cellIndex}: ${key} at line ${lineIndex + 1}`);
+        }
       }
     }
 
@@ -433,7 +465,7 @@ export class CorefluxEntitiesProvider extends EventEmitter implements vscode.Tre
    * @param entityName The name of the entity.
    * @returns The location object { notebookUri: vscode.Uri, cellIndex: number, rangeInCell: vscode.Range } or undefined.
    */
-  public getEntityLocation(entityType: 'Model' | 'Action' | 'Rule' | 'Route', entityName: string): EntityNotebookLocation | undefined {
+  public getEntityLocation(entityType: 'Model' | 'Action' | 'Rule' | 'Route' | 'PythonScript', entityName: string): EntityNotebookLocation | undefined {
     const searchKey = `${entityType}/${entityName}`;
     // Iterate through all notebooks we've parsed
     for (const locationsInNotebook of this.entityLocations.values()) {

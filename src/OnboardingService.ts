@@ -16,7 +16,7 @@ export class OnboardingService {
   private telemetryService: TelemetryService;
   private readonly WALKTHROUGH_ID = 'coreflux.onboarding';
   private readonly SEQUENCE_VERSION = '1.0';
-  private readonly TOTAL_STEPS = 9;
+  private readonly TOTAL_STEPS = 10;
 
   private readonly STEPS: OnboardingStep[] = [
     {
@@ -69,17 +69,24 @@ export class OnboardingService {
       completed: false
     },
     {
+      id: 'create-python-scripts',
+      title: 'Add basic Python scripts',
+      description: 'Create reusable Python functions that can be called from your LOT actions',
+      index: 8,
+      completed: false
+    },
+    {
       id: 'create-docker-compose',
       title: 'Create a shell script with Docker Compose',
       description: 'Set up a complete local development environment',
-      index: 8,
+      index: 9,
       completed: false
     },
     {
       id: 'upload-to-github',
       title: 'Upload the project to GitHub',
       description: 'Share your LOT project with version control',
-      index: 9,
+      index: 10,
       completed: false
     }
   ];
