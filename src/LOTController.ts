@@ -1101,13 +1101,16 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
    * Builds the add command from the cell's code.
    */
   private _buildAddCommand(type: EntityTypeString, code: string): string {
+    // Normalize the code by replacing newlines with spaces and escaping quotes
+    const normalizedCode = code.replace(/\n/g, ' ').replace(/"/g, '\\"').trim();
+    
     switch (type) {
-    case 'MODEL': return `-addModel ${code}`;
-    case 'ACTION': return `-addAction ${code}`;
-    case 'RULE': return `-addRule ${code}`;
-    case 'ROUTE': return `-addRoute ${code}`;
-    case 'VISU': return `-addVisu ${code}`;
-    case 'PYTHON': return `-addPython ${this._extractPythonScriptName(code)} ${code}`;
+    case 'MODEL': return `-addModel "${normalizedCode}"`;
+    case 'ACTION': return `-addAction "${normalizedCode}"`;
+    case 'RULE': return `-addRule "${normalizedCode}"`;
+    case 'ROUTE': return `-addRoute "${normalizedCode}"`;
+    case 'VISU': return `-addVisu "${normalizedCode}"`;
+    case 'PYTHON': return `-addPython ${this._extractPythonScriptName(code)} "${normalizedCode}"`;
     }
   }
 
@@ -1116,6 +1119,7 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
    * Returns the specific EntityTypeString union.
    */
   private _parseEntityTypeAndName(code: string): { type: EntityTypeString; name: string } | null {
+    // First, try to match the standard pattern
     const re = /\bDEFINE\s+(MODEL|ACTION|RULE|ROUTE|VISU)\s+"?([A-Za-z0-9_\-\/]+)"?/i;
     const match = code.match(re);
     if (!match) return null;
