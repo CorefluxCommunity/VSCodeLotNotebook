@@ -142,11 +142,15 @@ export class CorefluxEntitiesProvider extends EventEmitter implements vscode.Tre
         return item;
       });
 
-      return Promise.resolve(items.filter(cat => this.entities[cat.entityName as keyof typeof this.entities].size > 0));
+      return Promise.resolve(items.filter(cat => {
+        const categoryKey = cat.entityName === 'Python Scripts' ? 'PythonScripts' : cat.entityName as keyof typeof this.entities;
+        return this.entities[categoryKey].size > 0;
+      }));
 
     } else if (element.entityType === 'Category') {
       // Children of a category: Show entity names with status and commands
-      const entityMap = this.entities[element.entityName as keyof typeof this.entities];
+      const categoryKey = element.entityName === 'Python Scripts' ? 'PythonScripts' : element.entityName as keyof typeof this.entities;
+      const entityMap = this.entities[categoryKey];
       const items = Array.from(entityMap.entries()).map(([name, data]) => {
         const topic = `$SYS/Coreflux/${element.entityName}/${name}`;
         const collapsible = data.description ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None;
@@ -270,16 +274,19 @@ export class CorefluxEntitiesProvider extends EventEmitter implements vscode.Tre
       return;
     }
 
-    const category = parts[2] as keyof typeof this.entities;
+    const category = parts[2];
     const entityName = parts[3];
     const isDescription = parts.length > 4 && parts[4] === 'Description';
 
-    if (!(category in this.entities)) {
+    // Map the category name to the internal key
+    const categoryKey = category === 'Python Scripts' ? 'PythonScripts' : category as keyof typeof this.entities;
+
+    if (!(categoryKey in this.entities)) {
       console.warn(`Ignoring message for unknown category: ${category} in topic ${topic}`);
       return;
     }
 
-    let entityMap = this.entities[category];
+    let entityMap = this.entities[categoryKey];
     let entityData = entityMap.get(entityName);
 
     if (!entityData) {
