@@ -21,37 +21,44 @@ export class OnboardingCommands {
   public async createMarkdownFile(): Promise<void> {
     try {
       const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-      let filePath: vscode.Uri;
-      let createdIn: 'workspace' | 'untitled' | 'outside-workspace';
-
+      let notebookUri: vscode.Uri;
+      
       if (workspaceFolder) {
-        filePath = vscode.Uri.joinPath(workspaceFolder.uri, 'README.md');
-        createdIn = 'workspace';
+        notebookUri = vscode.Uri.joinPath(workspaceFolder.uri, 'walkthrough.lotnb');
       } else {
-        // Create untitled file
-        const doc = await vscode.workspace.openTextDocument({
-          language: 'markdown',
-          content: this.getMarkdownTemplate()
-        });
-        await vscode.window.showTextDocument(doc);
-        
-        await this.onboardingService.completeStep('create-markdown-file');
-        await this.telemetryService.emitNewFileEvent('README.md', 'untitled');
+        vscode.window.showWarningMessage('Please open a workspace folder first to use the walkthrough.');
         return;
       }
 
-      const content = this.getMarkdownTemplate();
-      await vscode.workspace.fs.writeFile(filePath, Buffer.from(content));
+      // Check if walkthrough.lotnb already exists
+      let notebookDoc: vscode.NotebookDocument;
+      try {
+        notebookDoc = await vscode.workspace.openNotebookDocument(notebookUri);
+      } catch {
+        vscode.window.showWarningMessage('Please create a LOT notebook first using the walkthrough.');
+        return;
+      }
+
+      // Add markdown cell with walkthrough explanation
+      const markdownContent = this.getWalkthroughExplanationTemplate();
+      const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Markup, markdownContent, 'markdown');
+      const edit = new vscode.WorkspaceEdit();
+      const notebookEdit = new vscode.NotebookEdit(
+        new vscode.NotebookRange(notebookDoc.cellCount, notebookDoc.cellCount),
+        [cellData]
+      );
+      edit.set(notebookDoc.uri, [notebookEdit]);
+      await vscode.workspace.applyEdit(edit);
       
-      const doc = await vscode.workspace.openTextDocument(filePath);
-      await vscode.window.showTextDocument(doc);
+      // Show the notebook
+      await vscode.window.showNotebookDocument(notebookDoc);
 
       await this.onboardingService.completeStep('create-markdown-file');
-      await this.telemetryService.emitNewFileEvent('README.md', createdIn);
+      await this.telemetryService.emitNewFileEvent('walkthrough.lotnb', 'workspace');
 
-      vscode.window.showInformationMessage('✅ Created README.md documentation file!');
+      vscode.window.showInformationMessage('✅ Added walkthrough explanation to your notebook!');
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to create markdown file: ${error}`);
+      vscode.window.showErrorMessage(`Failed to create markdown cell: ${error}`);
     }
   }
 
@@ -73,26 +80,50 @@ export class OnboardingCommands {
     try {
       const actionContent = this.getTimerActionTemplate();
       
-      // Try to add to existing notebook or create new one
-      const activeEditor = vscode.window.activeNotebookEditor;
+      // Use walkthrough.lotnb file consistently
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      let notebookUri: vscode.Uri;
       
-      if (activeEditor && activeEditor.notebook.notebookType === 'lot-notebook') {
-        // Add to existing notebook
-        const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, actionContent, 'lot');
-        const edit = new vscode.WorkspaceEdit();
-        const notebookEdit = new vscode.NotebookEdit(
-          new vscode.NotebookRange(activeEditor.notebook.cellCount, activeEditor.notebook.cellCount),
-          [cellData]
-        );
-        edit.set(activeEditor.notebook.uri, [notebookEdit]);
-        await vscode.workspace.applyEdit(edit);
+      if (workspaceFolder) {
+        notebookUri = vscode.Uri.joinPath(workspaceFolder.uri, 'walkthrough.lotnb');
       } else {
-        // Create new notebook
+        // Fallback to untitled if no workspace
         const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, actionContent, 'lot');
         const notebookData = new vscode.NotebookData([cellData]);
         const doc = await vscode.workspace.openNotebookDocument('lot-notebook', notebookData);
         await vscode.window.showNotebookDocument(doc);
+        await this.onboardingService.completeStep('create-timer-action');
+        vscode.window.showInformationMessage('✅ Created timer action! This action runs every 1 second.');
+        return;
       }
+
+      // Check if walkthrough.lotnb already exists
+      let notebookDoc: vscode.NotebookDocument;
+      try {
+        notebookDoc = await vscode.workspace.openNotebookDocument(notebookUri);
+      } catch {
+        // Create new walkthrough.lotnb file
+        const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, actionContent, 'lot');
+        const notebookData = new vscode.NotebookData([cellData]);
+        notebookDoc = await vscode.workspace.openNotebookDocument('lot-notebook', notebookData);
+        
+        // Create the file in the workspace
+        await vscode.workspace.fs.writeFile(notebookUri, Buffer.from(''));
+        notebookDoc = await vscode.workspace.openNotebookDocument(notebookUri);
+      }
+
+      // Add cell to existing notebook
+      const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, actionContent, 'lot');
+      const edit = new vscode.WorkspaceEdit();
+      const notebookEdit = new vscode.NotebookEdit(
+        new vscode.NotebookRange(notebookDoc.cellCount, notebookDoc.cellCount),
+        [cellData]
+      );
+      edit.set(notebookDoc.uri, [notebookEdit]);
+      await vscode.workspace.applyEdit(edit);
+      
+      // Show the notebook
+      await vscode.window.showNotebookDocument(notebookDoc);
 
       await this.onboardingService.completeStep('create-timer-action');
       vscode.window.showInformationMessage('✅ Created timer action! This action runs every 1 second.');
@@ -103,12 +134,28 @@ export class OnboardingCommands {
 
   public async uploadAction(): Promise<void> {
     try {
-      const activeEditor = vscode.window.activeNotebookEditor;
+      // Use walkthrough.lotnb file consistently
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      let notebookUri: vscode.Uri;
       
-      if (!activeEditor) {
-        vscode.window.showWarningMessage('Please open a LOT notebook first.');
+      if (workspaceFolder) {
+        notebookUri = vscode.Uri.joinPath(workspaceFolder.uri, 'walkthrough.lotnb');
+      } else {
+        vscode.window.showWarningMessage('Please open a workspace folder first to use the walkthrough.');
         return;
       }
+
+      // Check if walkthrough.lotnb exists and open it
+      let notebookDoc: vscode.NotebookDocument;
+      try {
+        notebookDoc = await vscode.workspace.openNotebookDocument(notebookUri);
+      } catch {
+        vscode.window.showWarningMessage('Please create actions first using the walkthrough, then run this command.');
+        return;
+      }
+
+      // Show the notebook
+      await vscode.window.showNotebookDocument(notebookDoc);
 
       // Use existing upload command
       await vscode.commands.executeCommand('coreflux.uploadEntitiesFromNotebook');
@@ -124,26 +171,50 @@ export class OnboardingCommands {
     try {
       const modelContent = this.getModelTemplate();
       
-      // Try to add to existing notebook or create new one
-      const activeEditor = vscode.window.activeNotebookEditor;
+      // Use walkthrough.lotnb file consistently
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      let notebookUri: vscode.Uri;
       
-      if (activeEditor && activeEditor.notebook.notebookType === 'lot-notebook') {
-        // Add to existing notebook
-        const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, modelContent, 'lot');
-        const edit = new vscode.WorkspaceEdit();
-        const notebookEdit = new vscode.NotebookEdit(
-          new vscode.NotebookRange(activeEditor.notebook.cellCount, activeEditor.notebook.cellCount),
-          [cellData]
-        );
-        edit.set(activeEditor.notebook.uri, [notebookEdit]);
-        await vscode.workspace.applyEdit(edit);
+      if (workspaceFolder) {
+        notebookUri = vscode.Uri.joinPath(workspaceFolder.uri, 'walkthrough.lotnb');
       } else {
-        // Create new notebook
+        // Fallback to untitled if no workspace
         const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, modelContent, 'lot');
         const notebookData = new vscode.NotebookData([cellData]);
         const doc = await vscode.workspace.openNotebookDocument('lot-notebook', notebookData);
         await vscode.window.showNotebookDocument(doc);
+        await this.onboardingService.completeStep('create-model');
+        vscode.window.showInformationMessage('✅ Created data model!');
+        return;
       }
+
+      // Check if walkthrough.lotnb already exists
+      let notebookDoc: vscode.NotebookDocument;
+      try {
+        notebookDoc = await vscode.workspace.openNotebookDocument(notebookUri);
+      } catch {
+        // Create new walkthrough.lotnb file
+        const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, modelContent, 'lot');
+        const notebookData = new vscode.NotebookData([cellData]);
+        notebookDoc = await vscode.workspace.openNotebookDocument('lot-notebook', notebookData);
+        
+        // Create the file in the workspace
+        await vscode.workspace.fs.writeFile(notebookUri, Buffer.from(''));
+        notebookDoc = await vscode.workspace.openNotebookDocument(notebookUri);
+      }
+
+      // Add cell to existing notebook
+      const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, modelContent, 'lot');
+      const edit = new vscode.WorkspaceEdit();
+      const notebookEdit = new vscode.NotebookEdit(
+        new vscode.NotebookRange(notebookDoc.cellCount, notebookDoc.cellCount),
+        [cellData]
+      );
+      edit.set(notebookDoc.uri, [notebookEdit]);
+      await vscode.workspace.applyEdit(edit);
+      
+      // Show the notebook
+      await vscode.window.showNotebookDocument(notebookDoc);
 
       await this.onboardingService.completeStep('create-model');
       vscode.window.showInformationMessage('✅ Created data model!');
@@ -156,23 +227,38 @@ export class OnboardingCommands {
     try {
       const actionContent = this.getModelActionTemplate();
       
-      // Try to add to existing notebook
-      const activeEditor = vscode.window.activeNotebookEditor;
+      // Use walkthrough.lotnb file consistently
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      let notebookUri: vscode.Uri;
       
-      if (activeEditor && activeEditor.notebook.notebookType === 'lot-notebook') {
-        // Add to existing notebook
-        const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, actionContent, 'lot');
-        const edit = new vscode.WorkspaceEdit();
-        const notebookEdit = new vscode.NotebookEdit(
-          new vscode.NotebookRange(activeEditor.notebook.cellCount, activeEditor.notebook.cellCount),
-          [cellData]
-        );
-        edit.set(activeEditor.notebook.uri, [notebookEdit]);
-        await vscode.workspace.applyEdit(edit);
+      if (workspaceFolder) {
+        notebookUri = vscode.Uri.joinPath(workspaceFolder.uri, 'walkthrough.lotnb');
       } else {
-        vscode.window.showWarningMessage('Please create a model first, then run this command in the same notebook.');
+        vscode.window.showWarningMessage('Please open a workspace folder first to use the walkthrough.');
         return;
       }
+
+      // Check if walkthrough.lotnb already exists
+      let notebookDoc: vscode.NotebookDocument;
+      try {
+        notebookDoc = await vscode.workspace.openNotebookDocument(notebookUri);
+      } catch {
+        vscode.window.showWarningMessage('Please create a model first using the walkthrough, then run this command.');
+        return;
+      }
+
+      // Add cell to existing notebook
+      const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, actionContent, 'lot');
+      const edit = new vscode.WorkspaceEdit();
+      const notebookEdit = new vscode.NotebookEdit(
+        new vscode.NotebookRange(notebookDoc.cellCount, notebookDoc.cellCount),
+        [cellData]
+      );
+      edit.set(notebookDoc.uri, [notebookEdit]);
+      await vscode.workspace.applyEdit(edit);
+      
+      // Show the notebook
+      await vscode.window.showNotebookDocument(notebookDoc);
 
       await this.onboardingService.completeStep('create-model-action');
       vscode.window.showInformationMessage('✅ Created action that publishes your model!');
@@ -221,6 +307,50 @@ export class OnboardingCommands {
       vscode.window.showInformationMessage('✅ Created Docker setup! Run ./start-coreflux.sh to start locally.');
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to create Docker setup: ${error}`);
+    }
+  }
+
+  public async createPythonScripts(): Promise<void> {
+    try {
+      const pythonContent = this.getPythonScriptsTemplate();
+      
+      // Use walkthrough.lotnb file consistently
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      let notebookUri: vscode.Uri;
+      
+      if (workspaceFolder) {
+        notebookUri = vscode.Uri.joinPath(workspaceFolder.uri, 'walkthrough.lotnb');
+      } else {
+        vscode.window.showWarningMessage('Please open a workspace folder first to use the walkthrough.');
+        return;
+      }
+
+      // Check if walkthrough.lotnb already exists
+      let notebookDoc: vscode.NotebookDocument;
+      try {
+        notebookDoc = await vscode.workspace.openNotebookDocument(notebookUri);
+      } catch {
+        vscode.window.showWarningMessage('Please create a LOT notebook first using the walkthrough.');
+        return;
+      }
+
+      // Add cell to existing notebook
+      const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, pythonContent, 'python');
+      const edit = new vscode.WorkspaceEdit();
+      const notebookEdit = new vscode.NotebookEdit(
+        new vscode.NotebookRange(notebookDoc.cellCount, notebookDoc.cellCount),
+        [cellData]
+      );
+      edit.set(notebookDoc.uri, [notebookEdit]);
+      await vscode.workspace.applyEdit(edit);
+      
+      // Show the notebook
+      await vscode.window.showNotebookDocument(notebookDoc);
+
+      await this.onboardingService.completeStep('create-python-scripts');
+      vscode.window.showInformationMessage('✅ Created Python scripts! These can be used in your LOT actions.');
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to create Python scripts: ${error}`);
     }
   }
 
@@ -461,6 +591,71 @@ docker-compose down -v
 
 For more help, visit [docs.coreflux.org](https://docs.coreflux.org)
 `;
+  }
+
+  private getWalkthroughExplanationTemplate(): string {
+    return `# 🚀 Coreflux Walkthrough Guide
+
+Welcome to the Language of Things (LOT) walkthrough! This notebook will guide you through building your first IoT solution step by step.
+
+## 📋 What You'll Learn
+
+This walkthrough will teach you how to:
+
+1. **Create IoT Actions** - Build automated behaviors that respond to events
+2. **Define Data Models** - Structure your IoT data for better organization
+3. **Connect to MQTT Brokers** - Establish real-time communication
+4. **Deploy to Production** - Upload your solutions to live environments
+5. **Set Up Local Development** - Create a complete development environment
+
+## 🎯 Walkthrough Structure
+
+Each cell in this notebook represents a step in your IoT journey:
+
+- **Timer Actions** - Actions that run on a schedule (every second, minute, etc.)
+- **Data Models** - Structured data definitions for your IoT devices
+- **Model Actions** - Actions that publish structured data using your models
+- **Broker Connections** - Real-time MQTT communication setup
+
+## 🔧 How to Use This Notebook
+
+1. **Follow the Steps** - Execute each cell in order
+2. **Connect Your Broker** - Use the broker connection dialog
+3. **Upload Actions** - Deploy your code to the MQTT broker
+4. **Monitor Results** - Watch your IoT solution in action
+
+## 🌟 Example: Smart Office Monitor
+
+In this walkthrough, you'll build a smart office monitoring system that:
+
+- **Publishes heartbeat signals** every second
+- **Tracks sensor data** (temperature, humidity, location)
+- **Runs continuously** on your MQTT broker
+- **Provides real-time insights** into your environment
+
+## 📚 Next Steps
+
+After completing this walkthrough, you'll be ready to:
+
+- Build more complex IoT solutions
+- Integrate with real sensors and devices
+- Create custom data models for your use cases
+- Deploy to production Coreflux environments
+
+---
+
+*Ready to start? Let's build something amazing! 🎉*
+`;
+  }
+
+  private getPythonScriptsTemplate(): string {
+    return `# @name Greeter
+def say_hello(name='World'):
+    return f'Hello, {name}!'
+
+# Example usage:
+# result = say_hello('Alice')
+# print(result)`;
   }
 
   private getGitignoreTemplate(): string {

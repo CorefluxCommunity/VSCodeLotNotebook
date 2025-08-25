@@ -16,7 +16,10 @@
           {
             "name": "comment.block.lot",
             "begin": "/\\*",
-            "end": "\\*/"
+            "end": "\\*/",
+            "captures": {
+              "0": { "name": "punctuation.definition.comment.lot" }
+            }
           }
         ]
       },
@@ -24,7 +27,7 @@
         "patterns": [
           {
             "name": "keyword.control.lot",
-            "match": "\\b(DEFINE|MODEL|RULE|ROUTE|ACTION|PUBLISH|KEEP|GET|ON|EVERY|DO|IF|THEN|ELSE|SET|FILTER|REGEX|ADD)\\b"
+            "match": "\\b(DEFINE|MODEL|RULE|ROUTE|ACTION|PUBLISH|KEEP|GET|ON|EVERY|DO|IF|THEN|ELSE|SET|FILTER|REGEX|ADD|TOPIC|COLLAPSED)\\b"
           }
         ]
       },

@@ -319,6 +319,11 @@ export async function activate(context: vscode.ExtensionContext) {
       handleRemoveAllCommand('Routes', '-removeAllRoutes');
     })
   );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('coreflux.removeAllPythonScripts', async () => {
+      handleRemoveAllCommand('Python Scripts', '-removeAllPythonScripts');
+    })
+  );
 
   // --- Other Commands ---
   const openPayloadCommand = vscode.commands.registerCommand('lot.openTopicPayload', async (topicName: string) => {
@@ -1402,18 +1407,88 @@ export async function activate(context: vscode.ExtensionContext) {
   // Command to create a new LOT Notebook
   context.subscriptions.push(
     vscode.commands.registerCommand('lot-notebook.new', async () => {
-      const lotCell = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, '', 'lot');
-      const notebookData = new vscode.NotebookData([lotCell]);
-      const doc = await vscode.workspace.openNotebookDocument('lot-notebook', notebookData);
-      await vscode.window.showNotebookDocument(doc);
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      let doc: vscode.NotebookDocument;
+      let fileName: string;
+      let createdIn: 'workspace' | 'untitled' | 'outside-workspace';
+      
+      if (workspaceFolder) {
+        // Create walkthrough.lotnb in workspace
+        const notebookUri = vscode.Uri.joinPath(workspaceFolder.uri, 'walkthrough.lotnb');
+        const lotCell = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, '', 'lot');
+        const notebookData = new vscode.NotebookData([lotCell]);
+        doc = await vscode.workspace.openNotebookDocument('lot-notebook', notebookData);
+        
+        // Create the file in the workspace
+        await vscode.workspace.fs.writeFile(notebookUri, Buffer.from(''));
+        doc = await vscode.workspace.openNotebookDocument(notebookUri);
+        await vscode.window.showNotebookDocument(doc);
+        
+        fileName = 'walkthrough.lotnb';
+        createdIn = 'workspace';
+      } else {
+        // Fallback to untitled
+        const lotCell = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, '', 'lot');
+        const notebookData = new vscode.NotebookData([lotCell]);
+        doc = await vscode.workspace.openNotebookDocument('lot-notebook', notebookData);
+        await vscode.window.showNotebookDocument(doc);
+        
+        fileName = 'untitled.lotnb';
+        createdIn = 'untitled';
+      }
       
       // Complete onboarding step if this is from the walkthrough
       await onboardingService.completeStep('create-lot-notebook');
       
       // Emit telemetry for new file creation
-      const fileName = doc.uri.path.split('/').pop() || 'untitled.lotnb';
-      const createdIn = vscode.workspace.workspaceFolders?.length ? 'workspace' : 'untitled';
       await telemetryService.emitNewFileEvent(fileName, createdIn);
+    })
+  );
+
+  // Command to detect and switch to LOT language
+  context.subscriptions.push(
+    vscode.commands.registerCommand('lot-notebook.detectAndSwitchLanguage', async () => {
+      const activeEditor = vscode.window.activeTextEditor;
+      if (!activeEditor) {
+        vscode.window.showWarningMessage('No active editor found.');
+        return;
+      }
+
+      const document = activeEditor.document;
+      const text = document.getText();
+      
+      // LOT detection patterns
+      const lotPatterns = [
+        /\bDEFINE\s+(MODEL|ACTION|RULE|ROUTE)\b/i,
+        /\bON\s+EVERY\b/i,
+        /\bPUBLISH\s+TOPIC\b/i,
+        /\bKEEP\s+TOPIC\b/i,
+        /\bGET\s+TOPIC\b/i,
+        /\bIF\s*\(.*\)\s*THEN\b/i,
+        /\bDO\s*\{/i
+      ];
+
+      let lotScore = 0;
+      for (const pattern of lotPatterns) {
+        const matches = text.match(pattern);
+        if (matches) {
+          lotScore += matches.length;
+        }
+      }
+
+      if (lotScore > 0) {
+        const result = await vscode.window.showInformationMessage(
+          `Detected LOT code (score: ${lotScore}). Switch to LOT language?`,
+          'Yes', 'No'
+        );
+        
+        if (result === 'Yes') {
+          await vscode.languages.setTextDocumentLanguage(document, 'lot');
+          vscode.window.showInformationMessage('Switched to LOT language mode.');
+        }
+      } else {
+        vscode.window.showInformationMessage('No LOT code detected in the current document.');
+      }
     })
   );
 
@@ -1452,6 +1527,29 @@ export async function activate(context: vscode.ExtensionContext) {
   
   context.subscriptions.push(
     vscode.commands.registerCommand('coreflux.setupGitRepo', () => onboardingCommands.setupGitRepo())
+  );
+  
+  context.subscriptions.push(
+    vscode.commands.registerCommand('coreflux.createPythonScripts', () => onboardingCommands.createPythonScripts())
+  );
+
+  // Debug command to test telemetry
+  context.subscriptions.push(
+    vscode.commands.registerCommand('coreflux.testTelemetry', async () => {
+      console.log('Testing telemetry connection...');
+      console.log('Telemetry enabled:', telemetryService.isTelemetryEnabled());
+      console.log('GUID:', telemetryService.getGUID());
+      
+      // Test startup event
+      await telemetryService.emitStartupEvent();
+      console.log('Startup event emitted');
+      
+      // Test new file event
+      await telemetryService.emitNewFileEvent('test.lotnb', 'workspace');
+      console.log('New file event emitted');
+      
+      vscode.window.showInformationMessage('Telemetry test completed. Check console for details.');
+    })
   );
 
   // --- Broker Connection Commands ---
