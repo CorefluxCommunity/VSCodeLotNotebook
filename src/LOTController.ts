@@ -369,7 +369,16 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
       
       // Handle Python cells
       if (lang === 'python') {
-        const scriptName = this._extractPythonScriptName(code);
+        let scriptName: string;
+        try {
+          scriptName = this._extractPythonScriptName(code);
+        } catch (error) {
+          // Display the error message to the user
+          execution.replaceOutput([new vscode.NotebookCellOutput([this.createHtmlOutput(error instanceof Error ? error.message : 'Invalid Python script format', true)])]);
+          execution.end(false, Date.now());
+          return;
+        }
+        
         const stopRequested = code.toUpperCase().includes('STOP');
 
         const cellState: CellState = {
@@ -762,14 +771,24 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
         if (isSuccess || isNotFound) {
           console.log(`[${uri}] DEBUG: Remove Step - Transitioning to add. Condition (isSuccess || isNotFound) met.`); // Log transition decision
           cellState.step = 'add';
-          const addCmd = this._buildAddCommand(type, code);
-          // Add log before calling publish
-          console.log(`[${uri}] DEBUG: Calling _publishCommand_noToken with command: "${addCmd}"`);
-          this._publishCommand_noToken(addCmd, execution,
-            isSuccess
-              ? `Removed ${type} ${name}. Now adding...`
-              : `${type} ${name} not found. Adding...`
-          );
+          
+          try {
+            const addCmd = this._buildAddCommand(type, code);
+            // Add log before calling publish
+            console.log(`[${uri}] DEBUG: Calling _publishCommand_noToken with command: "${addCmd}"`);
+            this._publishCommand_noToken(addCmd, execution,
+              isSuccess
+                ? `Removed ${type} ${name}. Now adding...`
+                : `${type} ${name} not found. Adding...`
+            );
+          } catch (error) {
+            // Handle Python script validation errors
+            const errorMessage = error instanceof Error ? error.message : 'Invalid Python script format';
+            const item = new vscode.NotebookCellOutput([this.createHtmlOutput(errorMessage, true)]);
+            execution.replaceOutput([item]);
+            execution.end(false, Date.now());
+            cellState.step = 'failed';
+          }
         } else if (isActualError) {
           console.log(`[${uri}] DEBUG: Remove Step - Failing due to isActualError.`); // Log failure decision
           
@@ -1107,7 +1126,14 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
     case 'RULE': return `-addRule ${code}`;
     case 'ROUTE': return `-addRoute ${code}`;
     case 'VISU': return `-addVisu ${code}`;
-    case 'PYTHON': return `-addPython ${this._extractPythonScriptName(code)} ${code}`;
+    case 'PYTHON': 
+      try {
+        const scriptName = this._extractPythonScriptName(code);
+        return `-addPython ${scriptName} ${code}`;
+      } catch (error) {
+        // Re-throw the error to be handled by the caller
+        throw error;
+      }
     }
   }
 
@@ -1134,22 +1160,18 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
 
   /**
    * Extract Python script name from Python code.
-   * Looks for @name comment or uses a default name.
+   * Enforces the required "# Script Name: [name]" format.
+   * Throws an error if the required comment is missing.
    */
   private _extractPythonScriptName(code: string): string {
-    const nameMatch = code.match(/^#\s*@name\s+(\S+)/i);
-    if (nameMatch) {
-      return nameMatch[1];
+    // Look for the required "# Script Name: [name]" format
+    const scriptNameMatch = code.match(/^#\s*Script Name:\s*(\S+)/i);
+    if (scriptNameMatch) {
+      return scriptNameMatch[1];
     }
     
-    // Try to extract from function definitions
-    const funcMatch = code.match(/^def\s+(\w+)/m);
-    if (funcMatch) {
-      return funcMatch[1];
-    }
-    
-    // Default name
-    return 'PythonScript';
+    // If the required comment is missing, throw an error
+    throw new Error('Python script must start with "# Script Name: [name]" comment. Please add this comment at the beginning of your Python code.');
   }
 
   private _parseInputTopics(type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE' | 'VISU' | 'PYTHON', code: string): string[] {
