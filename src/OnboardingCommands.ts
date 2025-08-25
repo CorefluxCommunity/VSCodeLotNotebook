@@ -649,7 +649,7 @@ After completing this walkthrough, you'll be ready to:
   }
 
   private getPythonScriptsTemplate(): string {
-    return `# @name Greeter
+    return `# Script Name: Greeter
 def say_hello(name='World'):
     return f'Hello, {name}!'
 
