@@ -1128,8 +1128,10 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
     case 'VISU': return `-addVisu ${code}`;
     case 'PYTHON': 
       try {
-        const scriptName = this._extractPythonScriptName(code);
-        return `-addPython ${scriptName} ${code}`;
+        // Validate that the script has the required comment format
+        this._extractPythonScriptName(code);
+        // Send the entire code including the Script Name comment
+        return `-addPython ${code}`;
       } catch (error) {
         // Re-throw the error to be handled by the caller
         throw error;
