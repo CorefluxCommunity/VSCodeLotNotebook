@@ -462,9 +462,8 @@ export class CorefluxEntitiesProvider extends EventEmitter implements vscode.Tre
     const cellDocument = cell.document;
     const cellFullContent = cellDocument.getText();
     
-    // For Python cells, we use the cell index as the script name if no explicit name is found
-    // You can also extract a name from a comment at the top of the cell
-    const nameMatch = cellFullContent.match(/^#\s*@name\s+(\S+)/i);
+    // Look for the required "# Script Name: [name]" format
+    const nameMatch = cellFullContent.match(/^#\s*Script Name:\s*(\S+)/i);
     const scriptName = nameMatch ? nameMatch[1] : `PythonScript_${cellIndex + 1}`;
     
     const key = `PythonScript/${scriptName}`;

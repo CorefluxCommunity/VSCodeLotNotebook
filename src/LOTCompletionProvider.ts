@@ -132,6 +132,20 @@ export class LOTCompletionProvider implements vscode.CompletionItemProvider {
       setItem.insertText = new vscode.SnippetString('SET ${1:variable} WITH ${2:value}');
       setItem.sortText = '4';
       items.push(setItem);
+      // CALL
+      const callItem = new vscode.CompletionItem('CALL', vscode.CompletionItemKind.Keyword);
+      callItem.detail = 'Call a Python script';
+      callItem.documentation = new vscode.MarkdownString('Call a Python script function');
+      callItem.insertText = new vscode.SnippetString('CALL ${1:scriptName} WITH ${2:parameters}');
+      callItem.sortText = '5';
+      items.push(callItem);
+      // RETURN
+      const returnItem = new vscode.CompletionItem('RETURN', vscode.CompletionItemKind.Keyword);
+      returnItem.detail = 'Return a value';
+      returnItem.documentation = new vscode.MarkdownString('Return a value from the action');
+      returnItem.insertText = new vscode.SnippetString('RETURN ${1:value}');
+      returnItem.sortText = '6';
+      items.push(returnItem);
       return items;
     }
 
@@ -237,7 +251,9 @@ export class LOTCompletionProvider implements vscode.CompletionItemProvider {
         const indentedKeywords = [
           { keyword: 'IF', icon: '$(symbol-operator)', description: 'Conditional statement', snippet: 'IF ${1:condition} THEN\n\t$2\nELSE\n\t$0' },
           { keyword: 'PUBLISH', icon: '$(arrow-up)', description: 'Publish data to a topic', snippet: 'PUBLISH TOPIC "${1:topic}" WITH ${2:value}' },
-          { keyword: 'SET', icon: '$(edit)', description: 'Set a value', snippet: 'SET ${1:variable} WITH ${2:value}' }
+          { keyword: 'SET', icon: '$(edit)', description: 'Set a value', snippet: 'SET ${1:variable} WITH ${2:value}' },
+          { keyword: 'CALL', icon: '$(symbol-method)', description: 'Call a Python script', snippet: 'CALL ${1:scriptName} WITH ${2:parameters}' },
+          { keyword: 'RETURN', icon: '$(arrow-left)', description: 'Return a value', snippet: 'RETURN ${1:value}' }
         ];
 
         indentedKeywords.forEach(({ keyword, icon, description, snippet }) => {
