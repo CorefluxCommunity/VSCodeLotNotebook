@@ -2,7 +2,7 @@
 	"name": "vscode-lot-notebooks",
 	"displayName": "LOT Notebooks",
 	"description": "Coreflux VS Code Notebooks for LOT language, leveraging making data-driven systems",
-	"version": "0.3.1",
+	"version": "0.4.0",
 	"publisher": "Coreflux",
 	"engines": {
 		"vscode": "^1.85.0"
@@ -195,6 +195,11 @@
 				"category": "Coreflux"
 			},
 			{
+				"command": "coreflux.disconnectBroker",
+				"title": "Disconnect from MQTT Broker",
+				"category": "Coreflux"
+			},
+			{
 				"command": "coreflux.createTimerAction",
 				"title": "Create Timer Action",
 				"category": "Coreflux"
@@ -383,6 +388,17 @@
 							"type": "boolean",
 							"default": false,
 							"description": "Enable Anselmo ChatBot (experimental AI assistant for LOT notebooks)"
+						},
+						"pythonScripting": {
+							"type": "object",
+							"title": "Python Scripting",
+							"description": "Enable Python scripting features (requires broker version >1.7.0)",
+							"properties": {
+								"enabled": {
+									"type": "boolean",
+									"default": false
+								}
+							}
 						}
 					}
 				}

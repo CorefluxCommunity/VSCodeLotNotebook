@@ -1,4 +1,4 @@
-# LOT VSCode Notebooks Extension (v0.3.2)
+# LOT VSCode Notebooks Extension (v0.4.0)
 
 **LOT Notebooks** is a Visual Studio Code extension that provides:
 - A **notebook** interface for the **LOT** (Language of Things) DSL
@@ -19,18 +19,22 @@
 
 3. **Live Data Views**  
    - Renders numeric payloads in real-time with a custom JSON-based approach
-   - Possibly provides charting if the JSON output references numeric data
-
-4. **Anselmo ChatBot (beta preview)**  
-   - Access an integrated ChatBot knowledgeable about Language Of Things (LOT) via the Notebook toolbar icon (🤖).
-   - Ask questions about LOT syntax, concepts, or request code examples.
-   - Includes Markdown rendering, diagram rendering (Mermaid), and code block copying.
+   - Provides charting for numeric data.
+   - **Enhanced Payload Rendering:** Automatically detects and renders various payload types from topic payloads:
+      - **JSON Breakdown:** Expandable structures for JSON payloads.
+      - **Image Preview:** View images from base64 encoded topic payloads directly in the live data view.
+      - **HTML Content:** Renders HTML snippets in an iframe for preview.
+      - **Nested JSON & Base64 Detection:** Intelligently extracts and renders JSON objects or long base64 strings embedded within larger payloads.
 
 5. **“Verification of the Status of the Broker”**   
    - Each Code cell shows if it is synced / unsynced / missing
    - There is a list of Components of the broker and their current standard in comparison to the Broker
    - A context menu is created for backup / copy code / restore or place in the project
 
+6. **Python Scripting (Experimental)**
+   - Write and execute Python scripts within notebook cells.
+   - Scripts must start with `# Script Name: [YourScriptName]` comment for proper processing.
+   - Seamlessly integrate Python logic with your LOT workflows.
 
 ## Usage
 
@@ -65,6 +69,7 @@
 | **LOT Notebook: Create**       | Creates an untitled `.lotnb` notebook.                                                |
 | **LOT Notebook: Change Credentials** | Prompts for broker URL, username, password for MQTT connectivity.            |
 | **lot.openTopicPayload**       | Opens a prompt to view/edit payload for an MQTT topic in the TreeView.              |
+| **coreflux.createPythonScripts** | Creates a new Python script cell with the required format.                          |
 
 ## Known Issues / Troubleshooting
 
@@ -82,11 +87,17 @@
 - **[Docs: LOT Rules](https://docs.coreflux.org/LOT/rules/)**: Explains how to write and apply rules in LOT.
 
 ## Release Notes
-### v0.3.1
+### v0.4.0
 - Added LOT code Completions:
     - Dynamic Code completions for ACTIONS / ROUTES / MODELS / RULES
     - Beginning of Introduction of VISUS (still under development)
-
+- **Python Scripting (Experimental)**:
+    - Added support for Python scripts in notebook cells, requiring a specific header format.
+    - Integrated commands for creating and managing Python scripts.
+- **Enhanced Live Data Views**:
+    - Implemented advanced payload rendering for JSON, Base64 images, and HTML content directly within tree views.
+    - Added capabilities for detecting and extracting nested JSON and long Base64 strings.
+    - Improved charting for numeric data with dynamic type selection (e.g., Int8, Float32).
 
 ### v0.3.0
 
@@ -99,10 +110,6 @@
     - **Create Definition in Notebook**: Inserts a `DEFINE` statement for the entity at the cursor in the active notebook.
     - **Remove Entity from Coreflux**: Sends a command to remove the entity from the broker.
 - Added **Go To Definition** for entities: Clicking an entity in the tree view navigates to its `DEFINE` statement in the corresponding notebook cell.
-- Added **Anselmo ChatBot (beta preview)**:
-    - Integrated webview chatbot accessible from the notebook toolbar.
-    - Provides explanations and assistance for Language Of Things (LOT).
-    - Added **Explain LOT Cell** command to send cell content directly to the chatbot.
 
 ### v0.2.5
 

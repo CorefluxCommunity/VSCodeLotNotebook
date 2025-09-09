@@ -553,7 +553,10 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
         this._client = undefined;
       }
 
-      this._client = mqtt.connect(credentials.brokerUrl, options);
+      this._client = mqtt.connect(credentials.brokerUrl, {
+        ...options,
+        reconnectPeriod: 0 // Disable auto-reconnection - let us handle it manually
+      });
 
       this._client.on('connect', () => {
         if (!this._connected) {
@@ -1361,6 +1364,13 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
   public async disconnect(): Promise<void> {
     await this._disconnectMqtt();
     this._clearAllCellStates();
+  }
+
+  /**
+   * Check if the client is currently attempting to connect
+   */
+  public isConnecting(): boolean {
+    return this._client?.reconnecting === true || (!this._connected && this._client !== undefined);
   }
 
   /**

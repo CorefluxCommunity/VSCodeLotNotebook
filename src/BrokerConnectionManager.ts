@@ -55,6 +55,30 @@ export class BrokerConnectionManager {
       } else if (action?.action === 'change') {
         await this.showConnectionDialog();
       }
+    } else if (this.controller.isConnecting()) {
+      // Show cancel/change options when connecting
+      const action = await vscode.window.showQuickPick([
+        {
+          label: '$(vm-disconnected) Cancel Connection',
+          description: 'Stop the current connection attempt',
+          action: 'cancel'
+        },
+        {
+          label: '$(vm-connect) Change Broker',
+          description: 'Connect to a different MQTT broker',
+          action: 'change'
+        }
+      ], {
+        placeHolder: 'Currently connecting...',
+        title: 'MQTT Broker Connection'
+      });
+
+      if (action?.action === 'cancel') {
+        await this.disconnect();
+      } else if (action?.action === 'change') {
+        await this.disconnect();
+        await this.showConnectionDialog();
+      }
     } else {
       // Show connection dialog
       await this.showConnectionDialog();
