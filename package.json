@@ -2,7 +2,7 @@
 	"name": "vscode-lot-notebooks",
 	"displayName": "LOT Notebooks",
 	"description": "Coreflux VS Code Notebooks for LOT language, leveraging making data-driven systems",
-	"version": "0.4.0",
+	"version": "0.4.1",
 	"publisher": "Coreflux",
 	"engines": {
 		"vscode": "^1.85.0"
@@ -413,9 +413,9 @@
 					{
 						"id": "create-lot-notebook",
 						"title": "Create your first LOT notebook file",
-						"description": "Start by creating a .lotnb file to begin working with Language of Things.\n\n[Create LOT Notebook](command:lot-notebook.new)",
+						"description": "**What is LOT?** LOT (Language of Things) is a simple programming language designed for IoT applications. It makes it easy to create automated behaviors for smart devices.\n\n**Why notebooks?** LOT notebooks combine code, documentation, and visualizations in one place, making it perfect for learning and prototyping IoT solutions.\n\n**What you'll create:** A new .lotnb file where you'll write your IoT automation code.\n\n[Create LOT Notebook](command:lot-notebook.new)",
 						"media": {
-							"image": "media/walkthrough/create-notebook.png",
+							"image": "media/walkthrough/create-notebook.gif",
 							"altText": "Creating a new LOT notebook"
 						},
 						"completionEvents": [
@@ -425,9 +425,9 @@
 					{
 						"id": "create-markdown-file",
 						"title": "Add walkthrough explanation",
-						"description": "Add a markdown cell with detailed explanation of the walkthrough and what you'll build.\n\n[Add Walkthrough Guide](command:coreflux.createMarkdownFile)",
+						"description": "**What is this step?** Adding documentation to explain what you're building and why.\n\n**Why documentation matters:** Good documentation helps you understand the purpose of each part of your IoT solution and makes it easier to share with others.\n\n**What you'll create:** A markdown cell with a complete guide explaining the smart office monitoring system you'll build.\n\n[Add Walkthrough Guide](command:coreflux.createMarkdownFile)",
 						"media": {
-							"image": "media/walkthrough/create-markdown.png",
+							"image": "media/walkthrough/create-markdown.gif",
 							"altText": "Adding walkthrough explanation to notebook"
 						},
 						"completionEvents": [
@@ -437,9 +437,9 @@
 					{
 						"id": "connect-broker",
 						"title": "Connect to your broker",
-						"description": "Establish a connection to an MQTT broker to start publishing data.\n\n[Connect to Broker](command:coreflux.connectBroker)",
+						"description": "**What is an MQTT broker?** An MQTT broker is like a central post office for IoT devices. It receives messages from devices and delivers them to other devices that need that information.\n\n**Why do we need it?** Your LOT actions need somewhere to send their data and receive commands. The broker makes this communication possible.\n\n**What happens when connected:** Once connected, your actions can start sending data and your devices can communicate in real-time.\n\n[Connect to Broker](command:coreflux.connectBroker)",
 						"media": {
-							"image": "media/walkthrough/connect-broker.png",
+							"image": "media/walkthrough/connect-broker.gif",
 							"altText": "Connecting to MQTT broker"
 						},
 						"completionEvents": [
@@ -449,9 +449,9 @@
 					{
 						"id": "create-timer-action",
 						"title": "Create an Action that runs every 1 second",
-						"description": "Build your first automated action with a timer trigger.\n\n[Create Timer Action](command:coreflux.createTimerAction)",
+						"description": "**What is an Action?** An Action is like a recipe that tells your IoT system what to do automatically. It can run on a schedule, respond to events, or react to sensor data.\n\n**Why every 1 second?** This creates a \"heartbeat\" signal that shows your system is alive and working. It's like a pulse that confirms everything is running properly.\n\n**What it does:** This action will publish a simple message every second to demonstrate continuous operation.\n\n[Create Timer Action](command:coreflux.createTimerAction)",
 						"media": {
-							"image": "media/walkthrough/timer-action.png",
+							"image": "media/walkthrough/timer-action.gif",
 							"altText": "Creating a timer-based action"
 						},
 						"completionEvents": [
@@ -461,9 +461,9 @@
 					{
 						"id": "upload-action",
 						"title": "Upload the Action to the broker",
-						"description": "Deploy your action to the MQTT broker for execution.\n\n[Upload Action](command:coreflux.uploadAction)",
+						"description": "**What is uploading?** Uploading sends your Action code to the broker where it will actually run and execute your automation.\n\n**Why upload to broker?** The broker is where your Actions live and work. Without uploading, your code is just sitting in the notebook - it won't actually do anything.\n\n**What happens after upload:** Your Action starts running on the broker and will continue running until you stop it. You can see it working in real-time!\n\n[Upload Action](command:coreflux.uploadAction)",
 						"media": {
-							"image": "media/walkthrough/upload-action.png",
+							"image": "media/walkthrough/upload-action.gif",
 							"altText": "Uploading action to broker"
 						},
 						"completionEvents": [
@@ -473,9 +473,9 @@
 					{
 						"id": "create-model",
 						"title": "Create a MODEL",
-						"description": "Define a data model to structure your IoT information.\n\n[Create Model](command:coreflux.createModel)",
+						"description": "**What is a Model?** A Model is like a template that defines the structure of your data. It's like creating a form where you specify what information you want to collect.\n\n**Why use Models?** Instead of sending random data, Models ensure your information is organized and consistent. It's like having a standard format for all your sensor readings.\n\n**What you'll create:** A SensorReading model with fields for temperature, humidity, location, and timestamp.\n\n[Create Model](command:coreflux.createModel)",
 						"media": {
-							"image": "media/walkthrough/create-model.png",
+							"image": "media/walkthrough/create-model.gif",
 							"altText": "Creating a data model"
 						},
 						"completionEvents": [
@@ -485,9 +485,9 @@
 					{
 						"id": "create-model-action",
 						"title": "Create an Action that publishes the MODEL",
-						"description": "Build an action that publishes data using your model structure.\n\n[Create Model Action](command:coreflux.createModelAction)",
+						"description": "**What is a Model Action?** This is an Action that uses your Model to send structured data. Instead of random messages, it sends organized information in a consistent format.\n\n**Why combine Actions with Models?** This creates realistic IoT data that mimics real sensors. Your Action generates sample sensor readings that follow your Model's structure.\n\n**What it does:** Every 5 seconds, it creates sample temperature and humidity data and publishes it using your SensorReading model.\n\n[Create Model Action](command:coreflux.createModelAction)",
 						"media": {
-							"image": "media/walkthrough/model-action.png",
+							"image": "media/walkthrough/model-action.gif",
 							"altText": "Creating an action that uses a model"
 						},
 						"completionEvents": [
@@ -496,39 +496,25 @@
 					},
 					{
 						"id": "create-python-scripts",
-						"title": "Add basic Python scripts",
-						"description": "Create reusable Python functions that can be called from your LOT actions.\n\n[Create Python Scripts](command:coreflux.createPythonScripts)",
+						"title": "Hello World with Python",
+						"description": "**What is Python integration?** LOT can call Python functions to do complex calculations, data processing, or use Python libraries. This gives you the power of Python with the simplicity of LOT.\n\n**Why use Python with LOT?** Python is great for data analysis, machine learning, and complex logic. LOT handles the IoT communication, while Python handles the heavy computation.\n\n**What you'll create:** A simple Python function that creates personalized greetings, and a LOT Action that calls this function every 5 seconds.\n\n[Create Python Scripts](command:coreflux.createPythonScripts)",
 						"media": {
-							"image": "media/walkthrough/python-scripts.png",
-							"altText": "Creating Python scripts"
+							"image": "media/walkthrough/python-scripts.gif",
+							"altText": "Creating Python scripts and LOT actions"
 						},
 						"completionEvents": [
 							"onCommand:coreflux.createPythonScripts"
 						]
 					},
 					{
-						"id": "create-docker-compose",
-						"title": "Create a shell script with Docker Compose",
-						"description": "Set up a complete local development environment.\n\n[Create Docker Setup](command:coreflux.createDockerSetup)",
+						"id": "connect-with-community",
+						"title": "Connect with Coreflux Community",
+						"description": "**Join our community!** You've completed your first LOT walkthrough! Now connect with other developers, get support, and stay updated with the latest Coreflux developments.\n\n**Get help and support:** Our community is here to help you build amazing IoT solutions with LOT. Join discussions, ask questions, and share your projects.\n\n**Stay connected:** Follow us for updates, tutorials, and community highlights.\n\n**Connect with us:**\n- 💬 [Discord](https://discord.gg/CHCWt6xF)\n- 🐳 [Docker Hub](https://hub.docker.com/r/coreflux/coreflux-mqtt-broker)\n- 📧 [Contact Support](https://www.coreflux.org/contact-us)\n- 🐙 [GitHub](https://github.com/CorefluxCommunity)",
 						"media": {
-							"image": "media/walkthrough/docker-compose.png",
-							"altText": "Setting up Docker Compose"
+							"image": "media/walkthrough/create-notebook.gif",
+							"altText": "Community resources"
 						},
-						"completionEvents": [
-							"onCommand:coreflux.createDockerSetup"
-						]
-					},
-					{
-						"id": "upload-to-github",
-						"title": "Upload the project to GitHub",
-						"description": "Share your LOT project with version control.\n\n[Setup Git Repository](command:coreflux.setupGitRepo)",
-						"media": {
-							"image": "media/walkthrough/github-upload.png",
-							"altText": "Uploading to GitHub"
-						},
-						"completionEvents": [
-							"onCommand:coreflux.setupGitRepo"
-						]
+						"completionEvents": []
 					}
 				]
 			}

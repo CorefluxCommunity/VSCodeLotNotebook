@@ -1,4 +1,4 @@
-# LOT VSCode Notebooks Extension (v0.4.0)
+# LOT VSCode Notebooks Extension (v0.4.1)
 
 **LOT Notebooks** is a Visual Studio Code extension that provides:
 - A **notebook** interface for the **LOT** (Language of Things) DSL
@@ -87,6 +87,21 @@
 - **[Docs: LOT Rules](https://docs.coreflux.org/LOT/rules/)**: Explains how to write and apply rules in LOT.
 
 ## Release Notes
+### v0.4.1
+- **Enhanced Walkthrough Experience**:
+    - Completely redesigned the onboarding walkthrough with beginner-friendly explanations
+    - Added "What", "Why", and "How" sections to each step for better learning experience
+    - Removed Docker Compose and GitHub setup steps to focus on core LOT functionality
+    - Updated Python integration example to use timer-based actions instead of topic triggers
+- **Improved Python Integration**:
+    - Enhanced Python script templates with cleaner, more focused examples
+    - Updated LOT action templates to use `ON EVERY 5 SECONDS` for automatic execution
+    - Better integration between Python functions and LOT actions in walkthrough
+- **Simplified Docker Setup**:
+    - Updated Docker templates to use the official Coreflux MQTT broker image
+    - Streamlined Docker Compose configuration with single-container setup
+    - Removed separate Mosquitto configuration for easier deployment
+
 ### v0.4.0
 - Added LOT code Completions:
     - Dynamic Code completions for ACTIONS / ROUTES / MODELS / RULES
