@@ -1,4 +1,4 @@
-# LOT VSCode Notebooks Extension (v0.4.1)
+# LOT VSCode Notebooks Extension (v0.4.2)
 
 **LOT Notebooks** is a Visual Studio Code extension that provides:
 - A **notebook** interface for the **LOT** (Language of Things) DSL
@@ -35,6 +35,8 @@
    - Write and execute Python scripts within notebook cells.
    - Scripts must start with `# Script Name: [YourScriptName]` comment for proper processing.
    - Seamlessly integrate Python logic with your LOT workflows.
+   - **Enforced Script Naming**: All Python scripts require a specific header format for validation.
+   - **Python Script Management**: View, manage, and remove Python scripts through the Coreflux Entities view.
 
 ## Usage
 
@@ -62,14 +64,108 @@
    - The extension runs `lot.openChatbot`, which can open your external chatbot in a webview or external browser  
    - Adjust this logic in your extension code if you want a different chatbot approach
 
+6. **Python Scripts Integration**  
+   - Create Python scripts using `Coreflux: Create Python Scripts` command
+   - All Python scripts must start with `# Script Name: [YourScriptName]` comment
+   - View and manage Python scripts in the Coreflux Entities view
+   - Remove individual scripts or all Python scripts using context menus
+
 ## Commands Overview
 
+### LOT Notebook Commands
 | Command                         | Description                                                                          |
 |--------------------------------|--------------------------------------------------------------------------------------|
 | **LOT Notebook: Create**       | Creates an untitled `.lotnb` notebook.                                                |
 | **LOT Notebook: Change Credentials** | Prompts for broker URL, username, password for MQTT connectivity.            |
+| **LOT Notebook: Detect and Switch to LOT Language** | Automatically detects LOT syntax and switches cell language. |
 | **lot.openTopicPayload**       | Opens a prompt to view/edit payload for an MQTT topic in the TreeView.              |
-| **coreflux.createPythonScripts** | Creates a new Python script cell with the required format.                          |
+| **lot.openChatbot**            | Opens the Anselmo ChatBot (beta preview) for LOT assistance.                        |
+
+### Coreflux Entity Management Commands
+| Command                         | Description                                                                          |
+|--------------------------------|--------------------------------------------------------------------------------------|
+| **Coreflux: Refresh**          | Refreshes the Coreflux Entities view.                                                |
+| **Coreflux: Copy Code**        | Copies entity code to clipboard.                                                     |
+| **Coreflux: View Description** | Views entity description in a webview.                                               |
+| **Coreflux: Remove Entity from Coreflux** | Removes selected entity from the broker.                                    |
+| **Coreflux: Create Definition in Notebook** | Creates a new entity definition in the active notebook.                    |
+| **Coreflux: Update Cell from Coreflux** | Pulls entity code from broker into notebook cell.                        |
+| **Coreflux: Update Coreflux from Cell** | Pushes cell code to the broker.                                        |
+
+### Bulk Management Commands
+| Command                         | Description                                                                          |
+|--------------------------------|--------------------------------------------------------------------------------------|
+| **Coreflux: Remove All Models** | Removes all models from the broker.                                                  |
+| **Coreflux: Remove All Actions** | Removes all actions from the broker.                                                |
+| **Coreflux: Remove All Routes** | Removes all routes from the broker.                                                  |
+| **Coreflux: Remove All Rules** | Removes all rules from the broker.                                                   |
+| **Coreflux: Remove All Python Scripts** | Removes all Python scripts from the broker.                                    |
+
+### Development & Setup Commands
+| Command                         | Description                                                                          |
+|--------------------------------|--------------------------------------------------------------------------------------|
+| **Coreflux: Open Getting Started Walkthrough** | Opens the interactive walkthrough guide.                                    |
+| **Coreflux: Create Markdown Documentation** | Creates markdown documentation for your project.                            |
+| **Coreflux: Connect to MQTT Broker** | Connects to the configured MQTT broker.                                        |
+| **Coreflux: Disconnect from MQTT Broker** | Disconnects from the MQTT broker.                                            |
+| **Coreflux: Create Timer Action** | Creates a timer-based LOT action.                                            |
+| **Coreflux: Upload Action to Broker** | Uploads the current action to the broker.                                    |
+| **Coreflux: Create Data Model** | Creates a new LOT data model.                                                 |
+| **Coreflux: Create Model Action** | Creates an action that uses a data model.                                    |
+| **Coreflux: Create Docker Setup** | Creates Docker configuration for Coreflux broker.                            |
+| **Coreflux: Setup Git Repository** | Initializes Git repository with appropriate .gitignore.                      |
+| **Coreflux: Create Python Scripts** | Creates Python script templates with proper formatting.                     |
+| **Coreflux: Test Telemetry Connection** | Tests the telemetry service connection.                                      |
+
+## Python Scripts Integration
+
+### Script Format Requirements
+
+All Python scripts in LOT notebooks must follow a specific format for proper processing:
+
+```python
+# Script Name: [YourScriptName]
+def your_function():
+    return "Hello from Python!"
+
+# Your Python code here...
+```
+
+### Key Features
+
+- **Enforced Naming**: Every Python script must start with `# Script Name: [name]` comment
+- **Validation**: Scripts without proper headers will show clear error messages
+- **Integration**: Python functions can be called from LOT actions using `CALL` statements
+- **Management**: View and manage all Python scripts through the Coreflux Entities view
+- **Bulk Operations**: Remove individual scripts or all Python scripts at once
+
+### Example Integration
+
+**Python Script:**
+```python
+# Script Name: Greeter
+def say_hello(name="World"):
+    return f"Hello, {name}!"
+
+def calculate_temperature(celsius):
+    return celsius * 9/5 + 32
+```
+
+**LOT Action using Python:**
+```lot
+DEFINE ACTION GreetingAction
+ON EVERY 5 SECONDS DO {
+    CALL Greeter.say_hello("LOT User")
+    CALL Greeter.calculate_temperature(25)
+}
+```
+
+### Error Handling
+
+If a Python script is missing the required header, you'll see:
+```
+Python script must start with "# Script Name: [name]" comment. Please add this comment at the beginning of your Python code.
+```
 
 ## Known Issues / Troubleshooting
 
@@ -87,6 +183,24 @@
 - **[Docs: LOT Rules](https://docs.coreflux.org/LOT/rules/)**: Explains how to write and apply rules in LOT.
 
 ## Release Notes
+### v0.4.2
+- **Enhanced Python Scripts Management**:
+    - Added comprehensive Python script validation with enforced naming format
+    - Implemented `# Script Name: [name]` requirement for all Python scripts
+    - Added Python scripts to Coreflux Entities view for easy management
+    - New bulk operations: Remove All Python Scripts command
+    - Improved error handling with clear validation messages
+- **Expanded Command Palette**:
+    - Added 25+ new Coreflux commands for comprehensive entity management
+    - Organized commands into logical categories (Entity Management, Bulk Operations, Development)
+    - Enhanced broker connection management with dedicated connect/disconnect commands
+    - Added telemetry testing and walkthrough commands
+- **Improved User Experience**:
+    - Better command organization and discoverability
+    - Enhanced error messages for Python script validation
+    - Streamlined entity management workflow
+    - Added comprehensive command documentation
+
 ### v0.4.1
 - **Enhanced Walkthrough Experience**:
     - Completely redesigned the onboarding walkthrough with beginner-friendly explanations

@@ -967,6 +967,13 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
       return;
     }
 
+    // Handle Python Scripts topic
+    if (topic === '$SYS/Coreflux/Python/Scripts') {
+      console.log(`[MQTT Receiver] Topic matched $SYS/Coreflux/Python/Scripts. Processing Python scripts...`);
+      this._entitiesProvider.processPythonScriptsMessage(payload);
+      return;
+    }
+
     // Handle Python debug messages
     if (topic.startsWith('$SYS/Coreflux/Python/') && topic.endsWith('/debug')) {
       this._handlePythonDebugMessage(topic, payload);

@@ -315,6 +315,52 @@ export class CorefluxEntitiesProvider extends EventEmitter implements vscode.Tre
     }
   }
 
+  /**
+   * Processes Python Scripts message from $SYS/Coreflux/Python/Scripts topic.
+   * The payload is a JSON array containing script information.
+   */
+  public processPythonScriptsMessage(payload: string): void {
+    try {
+      const scripts = JSON.parse(payload);
+      if (!Array.isArray(scripts)) {
+        console.warn('Python Scripts payload is not an array:', payload);
+        return;
+      }
+
+      // Clear existing Python scripts
+      this.entities.PythonScripts.clear();
+
+      // Process each script in the array
+      for (const script of scripts) {
+        if (script.ScriptName && script.Code) {
+          const scriptName = script.ScriptName;
+          const scriptCode = script.Code;
+          
+          // Create a description from the functions list if available
+          let description = '';
+          if (script.Functions && Array.isArray(script.Functions)) {
+            description = `Functions: ${script.Functions.join(', ')}`;
+          }
+
+          this.entities.PythonScripts.set(scriptName, {
+            code: scriptCode,
+            description: description || undefined
+          });
+
+          console.log(`Processed Python script: ${scriptName}`);
+        } else {
+          console.warn('Invalid script object in Python Scripts payload:', script);
+        }
+      }
+
+      this.refresh();
+      console.log(`Updated Python Scripts: ${this.entities.PythonScripts.size} scripts`);
+    } catch (error) {
+      console.error('Error parsing Python Scripts payload:', error);
+      console.error('Payload was:', payload);
+    }
+  }
+
   public clearEntities(): void {
     this.entities.Models.clear();
     this.entities.Actions.clear();

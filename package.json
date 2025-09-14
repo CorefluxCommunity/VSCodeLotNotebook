@@ -2,7 +2,7 @@
 	"name": "vscode-lot-notebooks",
 	"displayName": "LOT Notebooks",
 	"description": "Coreflux VS Code Notebooks for LOT language, leveraging making data-driven systems",
-	"version": "0.4.1",
+	"version": "0.4.2",
 	"publisher": "Coreflux",
 	"engines": {
 		"vscode": "^1.85.0"
@@ -137,6 +137,16 @@
 			{
 				"command": "coreflux.removeAllRoutes",
 				"title": "Remove All Routes",
+				"category": "Coreflux"
+			},
+			{
+				"command": "coreflux.removeAllPythonScripts",
+				"title": "Remove All Python Scripts",
+				"category": "Coreflux"
+			},
+			{
+				"command": "coreflux.removeAllRules",
+				"title": "Remove All Rules",
 				"category": "Coreflux"
 			},
 			{

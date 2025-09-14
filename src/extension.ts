@@ -109,6 +109,7 @@ export async function activate(context: vscode.ExtensionContext) {
       '$SYS/Coreflux/Actions/#',
       '$SYS/Coreflux/Rules/#',
       '$SYS/Coreflux/Routes/#',
+      '$SYS/Coreflux/Python/Scripts',
       '$SYS/Coreflux/Command/Output'
     ];
        
@@ -132,7 +133,13 @@ export async function activate(context: vscode.ExtensionContext) {
       if (topic.startsWith('$SYS/Coreflux/')) {
         const payload = payloadBuf.toString();
         const parts = topic.split('/');
-        if (parts.length >= 4 && ['Models', 'Actions', 'Rules', 'Routes'].includes(parts[2])) {
+        
+        // Handle Python Scripts topic (special case - contains JSON array)
+        if (topic === '$SYS/Coreflux/Python/Scripts') {
+          corefluxEntitiesProvider.processPythonScriptsMessage(payload);
+        }
+        // Handle other entity topics
+        else if (parts.length >= 4 && ['Models', 'Actions', 'Rules', 'Routes'].includes(parts[2])) {
           corefluxEntitiesProvider.processMqttMessage(topic, payload);
         } 
       }    
