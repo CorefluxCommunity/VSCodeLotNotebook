@@ -313,6 +313,7 @@ export class OnboardingCommands {
   public async createPythonScripts(): Promise<void> {
     try {
       const pythonContent = this.getPythonScriptsTemplate();
+      const pythonActionContent = this.getPythonActionTemplate();
       
       // Use walkthrough.lotnb file consistently
       const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -334,21 +335,31 @@ export class OnboardingCommands {
         return;
       }
 
-      // Add cell to existing notebook
-      const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, pythonContent, 'python');
+      // Add Python script cell to existing notebook
+      const pythonCellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, pythonContent, 'python');
       const edit = new vscode.WorkspaceEdit();
       const notebookEdit = new vscode.NotebookEdit(
         new vscode.NotebookRange(notebookDoc.cellCount, notebookDoc.cellCount),
-        [cellData]
+        [pythonCellData]
       );
       edit.set(notebookDoc.uri, [notebookEdit]);
       await vscode.workspace.applyEdit(edit);
+
+      // Add LOT action cell to existing notebook
+      const lotActionCellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, pythonActionContent, 'lot');
+      const lotEdit = new vscode.WorkspaceEdit();
+      const lotNotebookEdit = new vscode.NotebookEdit(
+        new vscode.NotebookRange(notebookDoc.cellCount + 1, notebookDoc.cellCount + 1),
+        [lotActionCellData]
+      );
+      lotEdit.set(notebookDoc.uri, [lotNotebookEdit]);
+      await vscode.workspace.applyEdit(lotEdit);
       
       // Show the notebook
       await vscode.window.showNotebookDocument(notebookDoc);
 
       await this.onboardingService.completeStep('create-python-scripts');
-      vscode.window.showInformationMessage('✅ Created Python scripts! These can be used in your LOT actions.');
+      vscode.window.showInformationMessage('✅ Created Python script and LOT action! The action calls the Python function.');
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to create Python scripts: ${error}`);
     }
@@ -440,8 +451,8 @@ ON EVERY 1 SECOND DO
   private getModelActionTemplate(): string {
     return `DEFINE ACTION PublishSensorData
 ON EVERY 5 SECONDS DO
-    SET "temp" WITH (RANDOM 18 25)
-    SET "humid" WITH (RANDOM 40 60)
+    SET "temp" WITH (RANDOM BETWEEN 18 AND 25)
+    SET "humid" WITH (RANDOM BETWEEN 40 AND 60)
     PUBLISH MODEL SensorReading TO "sensors/data" WITH
         temperature = {temp}
         humidity = {humid}
@@ -452,35 +463,20 @@ ON EVERY 5 SECONDS DO
     return `version: '3.8'
 
 services:
-  mosquitto:
-    image: eclipse-mosquitto:2.0
-    container_name: coreflux-mosquitto
+  coreflux-mqtt-broker:
+    image: coreflux/coreflux-mqtt-broker:latest
+    container_name: coreflux-mqtt-broker
     ports:
       - "1883:1883"
       - "9001:9001"
-    volumes:
-      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
-      - mosquitto_data:/mosquitto/data
-      - mosquitto_logs:/mosquitto/log
-    restart: unless-stopped
-
-  coreflux:
-    image: coreflux/coreflux:latest
-    container_name: coreflux-server
-    ports:
       - "8080:8080"
     environment:
-      - MQTT_BROKER_URL=tcp://mosquitto:1883
       - COREFLUX_LOG_LEVEL=info
-    depends_on:
-      - mosquitto
     restart: unless-stopped
     volumes:
       - coreflux_data:/app/data
 
 volumes:
-  mosquitto_data:
-  mosquitto_logs:
   coreflux_data:
 `;
   }
@@ -490,7 +486,7 @@ volumes:
 
 # Coreflux Local Development Environment
 
-echo "🚀 Starting Coreflux local environment..."
+echo "🚀 Starting Coreflux MQTT broker..."
 
 # Check if Docker is running
 if ! docker info > /dev/null 2>&1; then
@@ -498,27 +494,16 @@ if ! docker info > /dev/null 2>&1; then
     exit 1
 fi
 
-# Create mosquitto config if it doesn't exist
-if [ ! -f mosquitto.conf ]; then
-    echo "📝 Creating Mosquitto configuration..."
-    cat > mosquitto.conf << EOF
-listener 1883
-allow_anonymous true
-persistence true
-persistence_location /mosquitto/data/
-log_dest file /mosquitto/log/mosquitto.log
-EOF
-fi
-
 # Start services
-echo "🐳 Starting containers..."
+echo "🐳 Starting Coreflux MQTT broker..."
 docker-compose up -d
 
-echo "✅ Coreflux is starting up!"
+echo "✅ Coreflux MQTT broker is starting up!"
 echo ""
 echo "📋 Services:"
 echo "   MQTT Broker: localhost:1883"
-echo "   Coreflux UI:  http://localhost:8080"
+echo "   WebSocket:   localhost:9001"
+echo "   Coreflux UI: http://localhost:8080"
 echo ""
 echo "🔧 Commands:"
 echo "   Stop:     docker-compose down"
@@ -532,7 +517,7 @@ echo "Happy building! 🎉"
   private getDockerReadmeTemplate(): string {
     return `# Docker Development Environment
 
-This setup provides a complete local Coreflux development environment using Docker.
+This setup provides a complete local Coreflux development environment using the Coreflux MQTT broker Docker image.
 
 ## Prerequisites
 
@@ -551,21 +536,18 @@ chmod +x start-coreflux.sh
 
 ## Services
 
-### MQTT Broker (Mosquitto)
-- **Port:** 1883
+### Coreflux MQTT Broker
+- **MQTT Port:** 1883
 - **WebSocket:** 9001
-- **Config:** mosquitto.conf
-
-### Coreflux Server
-- **Port:** 8080
-- **UI:** http://localhost:8080
+- **UI Port:** 8080
+- **Image:** [coreflux/coreflux-mqtt-broker](https://hub.docker.com/r/coreflux/coreflux-mqtt-broker)
 
 ## Development Workflow
 
 1. Start the local environment: \`./start-coreflux.sh\`
 2. Open VS Code and connect to \`localhost:1883\`
 3. Deploy your LOT notebooks to the local broker
-4. View results in the Coreflux UI
+4. View results in the Coreflux UI at http://localhost:8080
 
 ## Useful Commands
 
@@ -586,7 +568,7 @@ docker-compose down -v
 ## Troubleshooting
 
 - **Connection refused:** Make sure Docker is running
-- **Port conflicts:** Check if ports 1883 or 8080 are in use
+- **Port conflicts:** Check if ports 1883, 9001, or 8080 are in use
 - **Permission errors:** Run \`chmod +x start-coreflux.sh\`
 
 For more help, visit [docs.coreflux.org](https://docs.coreflux.org)
@@ -649,13 +631,18 @@ After completing this walkthrough, you'll be ready to:
   }
 
   private getPythonScriptsTemplate(): string {
-    return `# @name Greeter
-def say_hello(name='World'):
-    return f'Hello, {name}!'
+    return `# Script Name: Greeter
+def say_hello(name="World"):
+    return f"Hello, {name}!"`;
+  }
 
-# Example usage:
-# result = say_hello('Alice')
-# print(result)`;
+  private getPythonActionTemplate(): string {
+    return `DEFINE ACTION PythonHello
+ON EVERY 5 SECONDS DO
+    CALL PYTHON "Greeter.say_hello"
+        WITH ("Alice")
+        RETURN AS {greeting}
+    PUBLISH TOPIC "python/response" WITH {greeting}`;
   }
 
   private getGitignoreTemplate(): string {

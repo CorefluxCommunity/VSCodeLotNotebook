@@ -118,7 +118,6 @@ function isBase64Image(str: string): { isImage: boolean; mimeType?: string; src?
     const jpegMagic = '/9j/';
     const pngMagic = 'iVBOR';
     const gifMagic = 'R0lGOD';
-    const webpMagic = 'UklGR';
     
     if (trimmed.startsWith(jpegMagic)) {
       return { isImage: true, mimeType: 'image/jpeg', src: `data:image/jpeg;base64,${trimmed}` };
@@ -126,12 +125,63 @@ function isBase64Image(str: string): { isImage: boolean; mimeType?: string; src?
       return { isImage: true, mimeType: 'image/png', src: `data:image/png;base64,${trimmed}` };
     } else if (trimmed.startsWith(gifMagic)) {
       return { isImage: true, mimeType: 'image/gif', src: `data:image/gif;base64,${trimmed}` };
-    } else if (trimmed.startsWith(webpMagic)) {
+    }
+    
+    // WebP files: Start with "UklGR" but do NOT contain "V0FWRQ" (to avoid confusion with WAV)
+    if (trimmed.startsWith('UklGR') && !trimmed.includes('V0FWRQ')) {
       return { isImage: true, mimeType: 'image/webp', src: `data:image/webp;base64,${trimmed}` };
     }
   }
   
   return { isImage: false };
+}
+
+/**
+ * Check if a string is a base64 encoded audio
+ */
+function isBase64Audio(str: string): { isAudio: boolean; mimeType?: string; src?: string } {
+  const trimmed = str.trim();
+  
+  // Check for data URL format
+  const dataUrlMatch = trimmed.match(/^data:([^;]+);base64,(.+)$/);
+  if (dataUrlMatch) {
+    const mimeType = dataUrlMatch[1];
+    const base64Data = dataUrlMatch[2];
+    
+    if (mimeType.startsWith('audio/')) {
+      return { isAudio: true, mimeType, src: trimmed };
+    }
+  }
+  
+  // Check for raw base64 audio data
+  if (/^[A-Za-z0-9+/=\r\n]+$/.test(trimmed) && trimmed.length > 100) {
+    // WAV files: Start with "UklGR" and contain "V0FWRQ" (WAVE) shortly after
+    if (trimmed.startsWith('UklGR') && trimmed.includes('V0FWRQ')) {
+      return { isAudio: true, mimeType: 'audio/wav', src: `data:audio/wav;base64,${trimmed}` };
+    }
+    
+    // MP3 files often start with ID3 tag "SUQz" or frame sync "//w" or "//s"
+    if (trimmed.startsWith('SUQz') || trimmed.startsWith('//w') || trimmed.startsWith('//s')) {
+      return { isAudio: true, mimeType: 'audio/mpeg', src: `data:audio/mpeg;base64,${trimmed}` };
+    }
+    
+    // OGG files start with "T2dnUw"
+    if (trimmed.startsWith('T2dnUw')) {
+      return { isAudio: true, mimeType: 'audio/ogg', src: `data:audio/ogg;base64,${trimmed}` };
+    }
+    
+    // FLAC files start with "ZmxhYw=="
+    if (trimmed.startsWith('ZmxhYw==')) {
+      return { isAudio: true, mimeType: 'audio/flac', src: `data:audio/flac;base64,${trimmed}` };
+    }
+    
+    // M4A/AAC files might start with different patterns
+    if (trimmed.startsWith('AAAAHGZ0eXA') || trimmed.startsWith('AAAAGZ0eXA')) {
+      return { isAudio: true, mimeType: 'audio/mp4', src: `data:audio/mp4;base64,${trimmed}` };
+    }
+  }
+  
+  return { isAudio: false };
 }
 
 /**
@@ -205,6 +255,7 @@ function renderJSONBreakdown(parent: HTMLElement, jsonData: any, path: string, l
       if (typeof value === 'string') {
         // Check if it's a base64 image
         const imageCheck = isBase64Image(value);
+        const audioCheck = isBase64Audio(value);
         const isHTML = isHTMLContent(value);
         
         if (imageCheck.isImage) {
@@ -220,6 +271,14 @@ function renderJSONBreakdown(parent: HTMLElement, jsonData: any, path: string, l
           valueSpan.appendChild(document.createTextNode(`"${value.substring(0, 50)}..."`));
           valueSpan.appendChild(document.createElement('br'));
           valueSpan.appendChild(img);
+        } else if (audioCheck.isAudio) {
+          valueSpan.appendChild(document.createTextNode(`"${value.substring(0, 50)}..."`));
+          valueSpan.appendChild(document.createElement('br'));
+          
+          const audioContainer = document.createElement('div');
+          audioContainer.style.marginTop = '5px';
+          renderAudioPlayer(audioContainer, audioCheck.src!, audioCheck.mimeType!, `${currentPath}-audiopreview`);
+          valueSpan.appendChild(audioContainer);
         } else if (isHTML) {
           valueSpan.appendChild(document.createTextNode(`"${value.substring(0, 50)}..."`));
           valueSpan.appendChild(document.createElement('br'));
@@ -294,6 +353,120 @@ function renderJSONBreakdown(parent: HTMLElement, jsonData: any, path: string, l
       parent.appendChild(renderValue(value, key, `${path}.${key}`, level));
     }
   }
+}
+
+/**
+ * Render audio player
+ */
+function renderAudioPlayer(parent: HTMLElement, audioSrc: string, mimeType: string, path: string): void {
+  const container = document.createElement('div');
+  container.style.marginTop = '5px';
+  container.style.border = '1px solid #ddd';
+  container.style.borderRadius = '4px';
+  container.style.overflow = 'hidden';
+  container.style.backgroundColor = '#f8f8f8';
+
+  const header = document.createElement('div');
+  header.style.backgroundColor = '#e0e0e0';
+  header.style.padding = '8px 12px';
+  header.style.borderBottom = '1px solid #ddd';
+  header.style.fontWeight = 'bold';
+  header.style.display = 'flex';
+  header.style.justifyContent = 'space-between';
+  header.style.alignItems = 'center';
+
+  const titleSpan = document.createElement('span');
+  titleSpan.textContent = `Audio Player (${mimeType})`;
+  titleSpan.style.fontSize = '12px';
+  header.appendChild(titleSpan);
+
+  const downloadBtn = document.createElement('button');
+  downloadBtn.textContent = '⬇️ Download';
+  downloadBtn.title = 'Download audio file';
+  downloadBtn.style.padding = '2px 8px';
+  downloadBtn.style.fontSize = '11px';
+  downloadBtn.style.cursor = 'pointer';
+  downloadBtn.style.border = '1px solid #ccc';
+  downloadBtn.style.borderRadius = '3px';
+  downloadBtn.style.backgroundColor = 'white';
+  downloadBtn.addEventListener('click', () => {
+    const link = document.createElement('a');
+    link.href = audioSrc;
+    link.download = `audio_${path.replace(/[^a-zA-Z0-9]/g, '_')}.${mimeType.split('/')[1]}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+  header.appendChild(downloadBtn);
+
+  const controlsContainer = document.createElement('div');
+  controlsContainer.style.padding = '12px';
+  controlsContainer.style.backgroundColor = 'white';
+
+  const audio = document.createElement('audio');
+  audio.src = audioSrc;
+  audio.controls = true;
+  audio.style.width = '100%';
+  audio.style.height = '40px';
+  audio.style.borderRadius = '3px';
+
+  // Add event listeners for better UX
+  audio.addEventListener('loadstart', () => {
+    console.log(`[tree-renderer] Loading audio for ${path}`);
+  });
+
+  audio.addEventListener('canplay', () => {
+    console.log(`[tree-renderer] Audio ready to play for ${path}`);
+  });
+
+  audio.addEventListener('error', (e) => {
+    console.error(`[tree-renderer] Audio error for ${path}:`, e);
+    const errorDiv = document.createElement('div');
+    errorDiv.style.color = 'red';
+    errorDiv.style.fontSize = '12px';
+    errorDiv.style.marginTop = '5px';
+    errorDiv.textContent = 'Error loading audio. The file may be corrupted or in an unsupported format.';
+    controlsContainer.appendChild(errorDiv);
+  });
+
+  controlsContainer.appendChild(audio);
+
+  // Add duration and file size info
+  const infoDiv = document.createElement('div');
+  infoDiv.style.marginTop = '8px';
+  infoDiv.style.fontSize = '11px';
+  infoDiv.style.color = '#666';
+  infoDiv.style.display = 'flex';
+  infoDiv.style.justifyContent = 'space-between';
+
+  const durationSpan = document.createElement('span');
+  durationSpan.textContent = 'Duration: Loading...';
+  infoDiv.appendChild(durationSpan);
+
+  const sizeSpan = document.createElement('span');
+  // Calculate approximate file size from base64
+  const base64Data = audioSrc.split(',')[1] || '';
+  const fileSizeBytes = Math.round((base64Data.length * 3) / 4);
+  const fileSizeKB = (fileSizeBytes / 1024).toFixed(1);
+  sizeSpan.textContent = `Size: ${fileSizeKB} KB`;
+  infoDiv.appendChild(sizeSpan);
+
+  audio.addEventListener('loadedmetadata', () => {
+    const duration = audio.duration;
+    if (isFinite(duration)) {
+      const minutes = Math.floor(duration / 60);
+      const seconds = Math.floor(duration % 60);
+      durationSpan.textContent = `Duration: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+    } else {
+      durationSpan.textContent = 'Duration: Unknown';
+    }
+  });
+
+  controlsContainer.appendChild(infoDiv);
+
+  container.appendChild(header);
+  container.appendChild(controlsContainer);
+  parent.appendChild(container);
 }
 
 /**
@@ -544,10 +717,11 @@ function buildTree(
 
       const isJSON = isValidJSON(payloadStr);
       const imageCheck = isBase64Image(payloadStr);
+      const audioCheck = isBase64Audio(payloadStr);
       const isHTML = isHTMLContent(payloadStr);
 
       let renderedRichContent = false;
-      if (key === 'html_preview' || (!isJSON && !imageCheck.isImage && isHTML)) {
+      if (key === 'html_preview' || (!isJSON && !imageCheck.isImage && !audioCheck.isAudio && isHTML)) {
         renderHTMLContent(contentDiv, payloadStr, currentPath);
         renderedRichContent = true;
       } else if (isJSON) {
@@ -564,6 +738,9 @@ function buildTree(
         img.style.border = '1px solid #ddd';
         img.style.borderRadius = '4px';
         contentDiv.appendChild(img);
+        renderedRichContent = true;
+      } else if (audioCheck.isAudio) {
+        renderAudioPlayer(contentDiv, audioCheck.src!, audioCheck.mimeType!, currentPath);
         renderedRichContent = true;
       }
 

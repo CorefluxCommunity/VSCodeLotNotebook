@@ -369,7 +369,16 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
       
       // Handle Python cells
       if (lang === 'python') {
-        const scriptName = this._extractPythonScriptName(code);
+        let scriptName: string;
+        try {
+          scriptName = this._extractPythonScriptName(code);
+        } catch (error) {
+          // Display the error message to the user
+          execution.replaceOutput([new vscode.NotebookCellOutput([this.createHtmlOutput(error instanceof Error ? error.message : 'Invalid Python script format', true)])]);
+          execution.end(false, Date.now());
+          return;
+        }
+        
         const stopRequested = code.toUpperCase().includes('STOP');
 
         const cellState: CellState = {
@@ -544,7 +553,10 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
         this._client = undefined;
       }
 
-      this._client = mqtt.connect(credentials.brokerUrl, options);
+      this._client = mqtt.connect(credentials.brokerUrl, {
+        ...options,
+        reconnectPeriod: 0 // Disable auto-reconnection - let us handle it manually
+      });
 
       this._client.on('connect', () => {
         if (!this._connected) {
@@ -762,14 +774,24 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
         if (isSuccess || isNotFound) {
           console.log(`[${uri}] DEBUG: Remove Step - Transitioning to add. Condition (isSuccess || isNotFound) met.`); // Log transition decision
           cellState.step = 'add';
-          const addCmd = this._buildAddCommand(type, code);
-          // Add log before calling publish
-          console.log(`[${uri}] DEBUG: Calling _publishCommand_noToken with command: "${addCmd}"`);
-          this._publishCommand_noToken(addCmd, execution,
-            isSuccess
-              ? `Removed ${type} ${name}. Now adding...`
-              : `${type} ${name} not found. Adding...`
-          );
+          
+          try {
+            const addCmd = this._buildAddCommand(type, code);
+            // Add log before calling publish
+            console.log(`[${uri}] DEBUG: Calling _publishCommand_noToken with command: "${addCmd}"`);
+            this._publishCommand_noToken(addCmd, execution,
+              isSuccess
+                ? `Removed ${type} ${name}. Now adding...`
+                : `${type} ${name} not found. Adding...`
+            );
+          } catch (error) {
+            // Handle Python script validation errors
+            const errorMessage = error instanceof Error ? error.message : 'Invalid Python script format';
+            const item = new vscode.NotebookCellOutput([this.createHtmlOutput(errorMessage, true)]);
+            execution.replaceOutput([item]);
+            execution.end(false, Date.now());
+            cellState.step = 'failed';
+          }
         } else if (isActualError) {
           console.log(`[${uri}] DEBUG: Remove Step - Failing due to isActualError.`); // Log failure decision
           
@@ -945,6 +967,13 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
       return;
     }
 
+    // Handle Python Scripts topic
+    if (topic === '$SYS/Coreflux/Python/Scripts') {
+      console.log(`[MQTT Receiver] Topic matched $SYS/Coreflux/Python/Scripts. Processing Python scripts...`);
+      this._entitiesProvider.processPythonScriptsMessage(payload);
+      return;
+    }
+
     // Handle Python debug messages
     if (topic.startsWith('$SYS/Coreflux/Python/') && topic.endsWith('/debug')) {
       this._handlePythonDebugMessage(topic, payload);
@@ -1107,7 +1136,16 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
     case 'RULE': return `-addRule ${code}`;
     case 'ROUTE': return `-addRoute ${code}`;
     case 'VISU': return `-addVisu ${code}`;
-    case 'PYTHON': return `-addPython ${this._extractPythonScriptName(code)} ${code}`;
+    case 'PYTHON': 
+      try {
+        // Validate that the script has the required comment format
+        this._extractPythonScriptName(code);
+        // Send the entire code including the Script Name comment
+        return `-addPython ${code}`;
+      } catch (error) {
+        // Re-throw the error to be handled by the caller
+        throw error;
+      }
     }
   }
 
@@ -1134,22 +1172,18 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
 
   /**
    * Extract Python script name from Python code.
-   * Looks for @name comment or uses a default name.
+   * Enforces the required "# Script Name: [name]" format.
+   * Throws an error if the required comment is missing.
    */
   private _extractPythonScriptName(code: string): string {
-    const nameMatch = code.match(/^#\s*@name\s+(\S+)/i);
-    if (nameMatch) {
-      return nameMatch[1];
+    // Look for the required "# Script Name: [name]" format
+    const scriptNameMatch = code.match(/^#\s*Script Name:\s*(\S+)/i);
+    if (scriptNameMatch) {
+      return scriptNameMatch[1];
     }
     
-    // Try to extract from function definitions
-    const funcMatch = code.match(/^def\s+(\w+)/m);
-    if (funcMatch) {
-      return funcMatch[1];
-    }
-    
-    // Default name
-    return 'PythonScript';
+    // If the required comment is missing, throw an error
+    throw new Error('Python script must start with "# Script Name: [name]" comment. Please add this comment at the beginning of your Python code.');
   }
 
   private _parseInputTopics(type: 'MODEL' | 'ACTION' | 'RULE' | 'ROUTE' | 'VISU' | 'PYTHON', code: string): string[] {
@@ -1337,6 +1371,13 @@ export default class LOTController extends EventEmitter { // Extend EventEmitter
   public async disconnect(): Promise<void> {
     await this._disconnectMqtt();
     this._clearAllCellStates();
+  }
+
+  /**
+   * Check if the client is currently attempting to connect
+   */
+  public isConnecting(): boolean {
+    return this._client?.reconnecting === true || (!this._connected && this._client !== undefined);
   }
 
   /**
